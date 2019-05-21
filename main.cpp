@@ -51,19 +51,19 @@ ProcessInput(game *Game, real32 DeltaTime)
 	real32 CameraSpeed = Game->Camera.MoveSpeed*DeltaTime;
 	if (Game->Input.MoveForward)
 	{
-		Game->Camera.Position += Game->Camera.Front*CameraSpeed;
+		Game->Camera.Position.Offset += Game->Camera.Front*CameraSpeed;
 	}
 	if (Game->Input.MoveBack)
 	{
-		Game->Camera.Position -= Game->Camera.Front*CameraSpeed;
+		Game->Camera.Position.Offset -= Game->Camera.Front*CameraSpeed;
 	}
 	if (Game->Input.MoveLeft)
 	{
-		Game->Camera.Position -= CameraSpeed*Normalize(Cross(Game->Camera.Front, CameraUp));
+		Game->Camera.Position.Offset -= CameraSpeed*Normalize(Cross(Game->Camera.Front, CameraUp));
 	}
 	if (Game->Input.MoveRight)
 	{
-		Game->Camera.Position += CameraSpeed*Normalize(Cross(Game->Camera.Front, CameraUp));
+		Game->Camera.Position.Offset += CameraSpeed*Normalize(Cross(Game->Camera.Front, CameraUp));
 	}
 
 	int32 X, Y;
@@ -99,17 +99,13 @@ ProcessInput(game *Game, real32 DeltaTime)
 	Game->Camera.Front.Normalize();
 }
 
-struct block
-{
-	bool32 Active; 
-};
-
 int main(void)
 {
 	glfwInit();
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+	glfwWindowHint(GLFW_SAMPLES, 4);
 	
 	uint32 Width = 900, Height = 500;
 
@@ -132,80 +128,38 @@ int main(void)
 	Game.Sound.InitAndLoadSounds();
 	// Game.Sound.PlaySound2D(sound_music);
 
-	void *Memory = malloc(Gigabytes(2));
-	InitializeStackAllocator(&Game.WorldAllocator, Gigabytes(1), Memory);
+	void *MainMemory = malloc(Gigabytes(2));
+	ZeroMemory(MainMemory, Gigabytes(2));
+	InitializeStackAllocator(&Game.WorldAllocator, Gigabytes(2), MainMemory);
+
+	void *TransientMemory = malloc(Gigabytes(2));
+	ZeroMemory(TransientMemory, Gigabytes(2));
+	InitializeStackAllocator(&Game.TranAllocator, Gigabytes(2), TransientMemory);
+
+	Game.World.ChunkDimInMeters = 8.0f;
+	Game.World.BlockDimInMeters = Game.World.ChunkDimInMeters / CHUNK_DIM;
 
 	glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-	Game.Camera.Position = V3(0.0f, 0.0f, 3.0f);
-	Game.Camera.Front = V3(0.0f, 0.0f, -1.0f);
-	Game.Camera.Pitch = 0.0f;
-	Game.Camera.Head = -90.0f;
-	Game.Camera.MoveSpeed = 3.0f;
-	Game.Camera.RotSensetivity = 0.1f;
+	camera *Camera = &Game.Camera;
+	Camera->Position.ChunkX = 0;
+	Camera->Position.ChunkY = 0;
+	Camera->Position.ChunkZ = 1;
+	Camera->Position.Offset = V3(0.0f, 0.0f, 5.0f);
+	Camera->Front = V3(0.0f, 0.0f, -1.0f);
+	Camera->Pitch = 0.0f;
+	Camera->Head = -90.0f;
+	// Camera->MoveSpeed = 3.0f;
+	Camera->MoveSpeed = 8.0f;
+	Camera->RotSensetivity = 0.1f;
 
-	glClearColor(1.0f, 1.0f, 0.0f, 1.0f);
+	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+	glEnable(GL_MULTISAMPLE);
 	glEnable(GL_DEPTH_TEST);
-	// glEnable(GL_CULL_FACE);
-
-	block *Chunk = PushArray(&Game.WorldAllocator, 16*16*16, block);
-
+	glEnable(GL_CULL_FACE);
+	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+	
 	shader TestShader("shaders/vertex.vert", "shaders/fragment.frag");
-
-	real32 CubeVertices[] = {
-		// Positions          
-		-0.5f, -0.5f, -0.5f,  
-		0.5f, -0.5f, -0.5f,  
-		0.5f,  0.5f, -0.5f,  
-		0.5f,  0.5f, -0.5f,  
-		-0.5f,  0.5f, -0.5f,  
-		-0.5f, -0.5f, -0.5f,  
-
-		-0.5f, -0.5f,  0.5f,
-		0.5f, -0.5f,  0.5f,
-		0.5f,  0.5f,  0.5f,
-		0.5f,  0.5f,  0.5f,
-		-0.5f,  0.5f,  0.5f,
-		-0.5f, -0.5f,  0.5f,
-
-		-0.5f,  0.5f,  0.5f,
-		-0.5f,  0.5f, -0.5f,
-		-0.5f, -0.5f, -0.5f,
-		-0.5f, -0.5f, -0.5f,
-		-0.5f, -0.5f,  0.5f,
-		-0.5f,  0.5f,  0.5f, 
-
-		0.5f,  0.5f,  0.5f,  
-		0.5f,  0.5f, -0.5f,  
-		0.5f, -0.5f, -0.5f,  
-		0.5f, -0.5f, -0.5f,  
-		0.5f, -0.5f,  0.5f,  
-		0.5f,  0.5f,  0.5f,  
-
-		-0.5f, -0.5f, -0.5f,  
-		0.5f, -0.5f, -0.5f,  
-		0.5f, -0.5f,  0.5f,  
-		0.5f, -0.5f,  0.5f,  
-		-0.5f, -0.5f,  0.5f,  
-		-0.5f, -0.5f, -0.5f,  
-
-		-0.5f,  0.5f, -0.5f,  
-		0.5f,  0.5f, -0.5f,  
-		0.5f,  0.5f,  0.5f,  
-		0.5f,  0.5f,  0.5f,  
-		-0.5f,  0.5f,  0.5f,  
-		-0.5f,  0.5f, -0.5f
-	};
-
-	GLuint VAO, VBO;
-	glGenVertexArrays(1, &VAO);
-	glGenBuffers(1, &VBO);
-	glBindVertexArray(VAO);
-	glBindBuffer(GL_ARRAY_BUFFER, VBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(CubeVertices), CubeVertices, GL_STATIC_DRAW);
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void *)0);
-	glBindVertexArray(0);
 
 	TestShader.Enable();
 	mat4 Projection = Perspective(45.0f, (float)Width/(float)Height, 0.1f, 100.0f);
@@ -217,14 +171,21 @@ int main(void)
 	{
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		// SoundEngine.Update(Camera.Position, Camera.Front);
+		// SoundEngine.Update(Camera->Position, Camera->Front);
 		ProcessInput(&Game, DeltaTime);
 
+		world_position Origin = {};
+		rect3 Bounds;
+		Bounds.Min = V3(-5.0f, -5.0f, -5.0f);
+		Bounds.Max = V3(5.0f, 5.0f, 5.0f);
+		BeginSimulation(&Game.TranAllocator, &Game.WorldAllocator, &Game.World, Origin, Bounds);
+
 		TestShader.Enable();
-		glBindVertexArray(VAO);
-		mat4 View = LookAt(Game.Camera.Position, Game.Camera.Position + Game.Camera.Front);
+		mat4 View = LookAt(GetCoordinatesFromWorldPos(&Game.World, &Camera->Position), GetCoordinatesFromWorldPos(&Game.World, &Camera->Position) + Camera->Front);
 		glUniformMatrix4fv(glGetUniformLocation(TestShader.ID, "View"), 1, GL_FALSE, View.Elements);
-		glDrawArrays(GL_TRIANGLES, 0, 36);
+		RenderChunks(&Game.World);
+		
+		EndSimulation(&Game.World);
 
 		DeltaTime = (real32)glfwGetTime() - LastFrame;
 		// TODO(george): Implement sleeping instead of busy waiting
@@ -236,7 +197,7 @@ int main(void)
 #endif
 		LastFrame = (real32)glfwGetTime();
 
-		std::cout << DeltaTime << std::endl;
+		// std::cout << DeltaTime << std::endl;
 
 		glfwPollEvents();
 		glfwSwapBuffers(Window);

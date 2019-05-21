@@ -3,6 +3,8 @@
 #include "GL\glew.h"
 #include "GLFW\glfw3.h"
 #include "irrKlang.h"
+#include <Windows.h>
+#include <vector>
 #include <iostream>
 
 typedef uint8_t uint8;
@@ -23,6 +25,8 @@ typedef size_t memory_size;
 
 #define Assert(expr) if(!(expr)) { *(int *)0 = 0; }
 
+#define ArrayCount(Array) (sizeof(Array)/sizeof(Array[0]))
+
 #define global_variable static
 #define internal static
 
@@ -32,10 +36,33 @@ typedef size_t memory_size;
 
 #define PI 3.14159265359f
 
+struct game_input
+{
+	int32 MouseX, MouseY;
+	bool32 MouseLeft, MouseRight;
+	union
+	{
+		bool32 Buttons[5];
+		struct
+		{
+			bool32 MoveForward;
+			bool32 MoveBack;
+			bool32 MoveLeft;
+			bool32 MoveRight;
+		};
+	};
+};
+
 struct stack_allocator
 {
 	memory_size Size;
 	uint8 *Base;
+	memory_size Used;
+};
+
+struct temporary_memory
+{
+	stack_allocator *Allocator;
 	memory_size Used;
 };
 
@@ -59,32 +86,37 @@ PushSize(stack_allocator *Allocator, memory_size Size)
 	return(Result);
 }
 
+inline temporary_memory
+BeginTemporaryMemory(stack_allocator *Allocator)
+{
+	temporary_memory Result;
+
+	Result.Allocator = Allocator;
+	Result.Used = Allocator->Used;
+
+	return(Result);
+}
+
+inline void
+EndTemporaryMemory(temporary_memory TempMem)
+{
+	stack_allocator *Allocator = TempMem.Allocator;
+	Assert(Allocator->Used >= TempMem.Used);
+	Allocator->Used = TempMem.Used;
+}
+
 #include <math.h>
 #include "vec.hpp"
+#include "maths.hpp"
 #include "mat.hpp"
 #include "shader.hpp"
 #include "sound_manager.hpp"
-
-struct game_input
-{
-	int32 MouseX, MouseY;
-	bool32 MouseLeft, MouseRight;
-	union
-	{
-		bool32 Buttons[5];
-		struct
-		{
-			bool32 MoveForward;
-			bool32 MoveBack;
-			bool32 MoveLeft;
-			bool32 MoveRight;
-		};
-	};
-};
+#include "world.hpp"
+#include "sim_region.hpp"
 
 struct camera
 {
-	v3 Position;
+	world_position Position;
 	v3 Front;
 
 	real32 Pitch;
@@ -100,6 +132,9 @@ struct game
 	sound_system Sound;
 
 	stack_allocator WorldAllocator;
+	stack_allocator TranAllocator;
+
+	world World;
 
 	camera Camera;
 };
