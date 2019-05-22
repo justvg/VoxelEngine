@@ -20,12 +20,11 @@ BeginSimulation(stack_allocator *Allocator, stack_allocator *WorldAllocator, wor
 	world_position MaxChunkP = MapIntoChunkSpace(World, SimRegion->Origin, Bounds.Max);
 	for (int32 ChunkZ = MinChunkP.ChunkZ; ChunkZ <= MaxChunkP.ChunkZ; ChunkZ++)
 	{
-		for (int32 ChunkY = MinChunkP.ChunkY; ChunkY <= MaxChunkP.ChunkY; ChunkY++)
+		for (int32 ChunkY = MinChunkP.ChunkY; ChunkY <= 0; ChunkY++)
 		{
 			for (int32 ChunkX = MinChunkP.ChunkX; ChunkX <= MaxChunkP.ChunkX; ChunkX++)
 			{
 				world_chunk *Chunk = GetWorldChunk(World, WorldAllocator, ChunkX, ChunkY, ChunkZ);
-				real64 A1 = glfwGetTime();
 				if (Chunk)
 				{
 					if (!Chunk->IsLoaded)
@@ -36,11 +35,13 @@ BeginSimulation(stack_allocator *Allocator, stack_allocator *WorldAllocator, wor
 					{
 						UpdateChunk(World, Chunk);
 					}
-					Chunk->NextChunk = World->ChunksToRender;
-					World->ChunksToRender = Chunk;
+					world_chunk *RenderChunk = PushStruct(Allocator, world_chunk);
+					*RenderChunk = *Chunk;
+					world_position ChunkPosition = {ChunkX, ChunkY, ChunkZ, V3(0.0f, 0.0f, 0.0f)};
+					RenderChunk->Translation = Substract(World, &ChunkPosition, &SimRegion->Origin);
+					RenderChunk->NextChunk = World->ChunksToRender;
+					World->ChunksToRender = RenderChunk;
 				}
-				A1 = glfwGetTime() - A1;
-				std::cout << A1 << std::endl;
 			}
 		}
 	}

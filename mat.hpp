@@ -92,7 +92,7 @@ Rotate(float Angle, v3 Axis)
 {
 	mat4 Result;
 
-	float Radians = Angle * PI / 180.0f;
+	float Radians = Angle * M_PI / 180.0f;
 	float Cos = cosf(Radians);
 	float Sin = sinf(Radians);
 	Axis.Normalize();
@@ -153,6 +153,40 @@ LookAt(v3 From, v3 Target, v3 UpAxis = V3(0.0f, 1.0f, 0.0f))
 	return(Result);
 }
 
+internal mat4 
+RotationMatrixFromDirectionVector(v3 Direction)
+{
+	v3 UpAxis = V3(0.0f, 1.0f, 0.0f);
+	v3 Forward = Normalize(-Direction);
+	v3 Right = Normalize(Cross(UpAxis, Forward));
+	v3 Up = Normalize(Cross(Forward, Right));
+
+	mat4 Result;
+
+	Result.a11 = Right.x;
+	Result.a12 = Right.y;
+	Result.a13 = Right.z;
+
+	Result.a21 = Up.x;
+	Result.a22 = Up.y;
+	Result.a23 = Up.z;
+
+	Result.a31 = Forward.x;
+	Result.a32 = Forward.y;
+	Result.a33 = Forward.z;
+
+	Result.a14 = 0.0f;
+	Result.a24 = 0.0f;
+	Result.a34 = 0.0f;
+
+	Result.a41 = 0.0f;
+	Result.a42 = 0.0f;
+	Result.a43 = 0.0f;
+	Result.a44 = 1.0f;
+
+	return(Result);
+}
+
 internal mat4
 Ortho(real32 Bottom, real32 Top, real32 Left, real32 Right, real32 Near, real32 Far)
 {
@@ -172,7 +206,7 @@ Ortho(real32 Bottom, real32 Top, real32 Left, real32 Right, real32 Near, real32 
 internal mat4
 Perspective(real32 FoV, real32 AspectRatio, real32 Near, real32 Far)
 {
-	real32 Scale = tanf(FoV * PI / 180.0f * 0.5f) * Near;
+	real32 Scale = tanf(FoV * M_PI / 180.0f * 0.5f) * Near;
 	real32 Right = AspectRatio * Scale;
 	real32 Left = -Right;
 	real32 Top = Scale;

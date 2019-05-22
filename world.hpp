@@ -21,6 +21,13 @@ struct block_vertex
 	v3 Normal;
 };
 
+// TODO(georgy): Decide how to free chunks that haven't been used for a while;
+//				 From chunk we should free Blocks, VertexBuffer, VBO & VAO;
+//				 Maintain all loaded chunks and then once in some amount of time iterate over them and free that we don't need??
+//               Blocks can be freed using FirstFreeBlocks pointer;
+//               The contents of VertexBuffer can be freed using trick vector<block_vertex>().swap(VertexBuffer);
+//			     To free VBO & VAO use glDeleteBuffer and so on;
+//               Don't forget to unset IsLoaded!
 struct world_chunk
 {
 	int32 ChunkX;
@@ -35,6 +42,8 @@ struct world_chunk
 
 	GLuint VAO, VBO;
 
+	v3 Translation;
+
 	world_chunk *NextChunk;
 };
 
@@ -43,17 +52,37 @@ struct world
 	real32 ChunkDimInMeters;
 	real32 BlockDimInMeters;
 
+	real32 MaxNoiseValue;
+	real32 MinNoiseValue;
+	FastNoise Noise;
+
 	world_chunk *ChunksToRender;
 
 	// NOTE(georgy): Must be a power of two!
 	world_chunk *ChunkHash[4096];
 };
 
+inline v3
+Substract(world *World, world_position *A, world_position *B)
+{
+	v3 dChunk = { A->ChunkX - B->ChunkX,
+				  A->ChunkY - B->ChunkY,
+				  A->ChunkZ - B->ChunkZ };
+
+	v3 Result = World->ChunkDimInMeters*dChunk + (A->Offset - B->Offset);
+
+	return(Result);
+}
+
 internal void
-RenderChunks(world *World)
+RenderChunks(world *World, GLuint Shader, mat4 *ViewRotation)
 {
 	for(world_chunk *Chunk = World->ChunksToRender; Chunk; Chunk = Chunk->NextChunk)
 	{
+		mat4 TranslationMatrix = Translation(Chunk->Translation);
+		mat4 Matrix = *ViewRotation * TranslationMatrix;
+		glUniformMatrix4fv(glGetUniformLocation(Shader, "View"), 1, GL_FALSE, Matrix.Elements);
+
 		glBindVertexArray(Chunk->VAO);
 		glDrawArrays(GL_TRIANGLES, 0, (GLsizei)Chunk->VertexBuffer->size());
 	}
@@ -189,9 +218,9 @@ GenerateChunkVertices(world_chunk *Chunk, real32 BlockDimInMeters)
 			{
 				if (GetVoxel(Blocks, XI, YI, ZI).Active)
 				{
-					real32 X = BlockDimInMeters*((real32)XI + CHUNK_DIM*Chunk->ChunkX);
-					real32 Y = BlockDimInMeters*((real32)YI + CHUNK_DIM*Chunk->ChunkY);
-					real32 Z = BlockDimInMeters*((real32)ZI + CHUNK_DIM*Chunk->ChunkZ);
+					real32 X = BlockDimInMeters*((real32)XI);
+					real32 Y = BlockDimInMeters*((real32)YI);
+					real32 Z = BlockDimInMeters*((real32)ZI);
 					block_vertex A, B, C, D;
 
 					if ((XI == 0) || !GetVoxel(Blocks, XI - 1, YI, ZI).Active)
@@ -265,9 +294,21 @@ LoadChunk(world *World, stack_allocator *WorldAllocator, world_chunk *Chunk)
 	Chunk->Blocks = PushArray(WorldAllocator, CHUNK_DIM*CHUNK_DIM*CHUNK_DIM, block);
 	block *Blocks = Chunk->Blocks;
 	real32 BlockDimInMeters = World->BlockDimInMeters;
-	for (uint32 I = 0; I < CHUNK_DIM*CHUNK_DIM*CHUNK_DIM; I++)
+	for (uint32 Z = 0; Z < CHUNK_DIM; Z++)
 	{
-		Blocks[I].Active = true;
+		for (uint32 X = 0; X < CHUNK_DIM; X++)
+		{	
+			real32 NoiseValue = (World->Noise.GetNoise((CHUNK_DIM * Chunk->ChunkX) + X, (CHUNK_DIM * Chunk->ChunkZ) + Z));
+			if (NoiseValue > World->MaxNoiseValue) World->MaxNoiseValue = NoiseValue;
+			if(NoiseValue < World->MinNoiseValue) World->MinNoiseValue = NoiseValue;
+			real32 Height = (NoiseValue + 1.0f) * World->ChunkDimInMeters * 0.5f;
+			Assert(Height > 0.0f);
+			Assert(Height <= World->ChunkDimInMeters);
+			for (uint32 Y = 0; Y < Height; Y++)
+			{
+				GetVoxel(Blocks, X, Y, Z).Active = true;
+			}
+		}
 	}
 	
 	GenerateChunkVertices(Chunk, BlockDimInMeters);

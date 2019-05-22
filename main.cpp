@@ -65,6 +65,7 @@ ProcessInput(game *Game, real32 DeltaTime)
 	{
 		Game->Camera.Position.Offset += CameraSpeed*Normalize(Cross(Game->Camera.Front, CameraUp));
 	}
+	RecanonicalizeCoords(&Game->World, &Game->Camera.Position);
 
 	int32 X, Y;
 	X = Game->Input.MouseX;
@@ -91,8 +92,8 @@ ProcessInput(game *Game, real32 DeltaTime)
 	LastMouseX = X;
 	LastMouseY = Y;
 
-	float PitchRadians = Game->Camera.Pitch * (float)PI / 180.0f;
-	float HeadRadians = Game->Camera.Head * (float)PI / 180.0f;
+	float PitchRadians = Game->Camera.Pitch * (float)M_PI / 180.0f;
+	float HeadRadians = Game->Camera.Head * (float)M_PI / 180.0f;
 	Game->Camera.Front.x = cosf(PitchRadians)*cosf(HeadRadians);
 	Game->Camera.Front.y = sinf(PitchRadians);
 	Game->Camera.Front.z = cosf(PitchRadians)*sinf(HeadRadians);
@@ -138,14 +139,20 @@ int main(void)
 
 	Game.World.ChunkDimInMeters = 8.0f;
 	Game.World.BlockDimInMeters = Game.World.ChunkDimInMeters / CHUNK_DIM;
+	Game.World.Noise.SetNoiseType(FastNoise::SimplexFractal);
+	Game.World.Noise.SetSeed(1337);
+	Game.World.Noise.SetFrequency(0.02f);
+	Game.World.Noise.SetFractalOctaves(5);
+	Game.World.MaxNoiseValue = FLT_MIN;
+	Game.World.MinNoiseValue = FLT_MAX;
 
 	glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
 	camera *Camera = &Game.Camera;
 	Camera->Position.ChunkX = 0;
 	Camera->Position.ChunkY = 0;
-	Camera->Position.ChunkZ = 1;
-	Camera->Position.Offset = V3(0.0f, 0.0f, 5.0f);
+	Camera->Position.ChunkZ = 0;
+	Camera->Position.Offset = V3(0.0f, 0.0f, 0.0f);
 	Camera->Front = V3(0.0f, 0.0f, -1.0f);
 	Camera->Pitch = 0.0f;
 	Camera->Head = -90.0f;
@@ -155,9 +162,14 @@ int main(void)
 
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 	glEnable(GL_MULTISAMPLE);
+#if 1
 	glEnable(GL_DEPTH_TEST);
 	glEnable(GL_CULL_FACE);
-	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+#else
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_CULL_FACE);
+#endif
+	// glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 	
 	shader TestShader("shaders/vertex.vert", "shaders/fragment.frag");
 
@@ -174,18 +186,19 @@ int main(void)
 		// SoundEngine.Update(Camera->Position, Camera->Front);
 		ProcessInput(&Game, DeltaTime);
 
-		world_position Origin = {};
+		world_position Origin = Camera->Position;
 		rect3 Bounds;
-		Bounds.Min = V3(-5.0f, -5.0f, -5.0f);
-		Bounds.Max = V3(5.0f, 5.0f, 5.0f);
+		Bounds.Min = V3(-40.0f, -40.0f, -40.0f);
+		Bounds.Max = V3(40.0f, 40.0f, 40.0f);
+		temporary_memory TempSimMemory = BeginTemporaryMemory(&Game.TranAllocator);
 		BeginSimulation(&Game.TranAllocator, &Game.WorldAllocator, &Game.World, Origin, Bounds);
 
 		TestShader.Enable();
-		mat4 View = LookAt(GetCoordinatesFromWorldPos(&Game.World, &Camera->Position), GetCoordinatesFromWorldPos(&Game.World, &Camera->Position) + Camera->Front);
-		glUniformMatrix4fv(glGetUniformLocation(TestShader.ID, "View"), 1, GL_FALSE, View.Elements);
-		RenderChunks(&Game.World);
+		mat4 ViewRotation = RotationMatrixFromDirectionVector(Camera->Front);
+		RenderChunks(&Game.World, TestShader.ID, &ViewRotation);
 		
 		EndSimulation(&Game.World);
+		EndTemporaryMemory(TempSimMemory);
 
 		DeltaTime = (real32)glfwGetTime() - LastFrame;
 		// TODO(george): Implement sleeping instead of busy waiting

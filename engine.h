@@ -3,6 +3,7 @@
 #include "GL\glew.h"
 #include "GLFW\glfw3.h"
 #include "irrKlang.h"
+#include "FastNoise.h"
 #include <Windows.h>
 #include <vector>
 #include <iostream>
@@ -34,7 +35,7 @@ typedef size_t memory_size;
 #define Megabytes(Value) (Kilobytes(Value) * 1024LL)
 #define Gigabytes(Value) (Megabytes(Value) * 1024LL)
 
-#define PI 3.14159265359f
+#define M_PI 3.14159265359f
 
 struct game_input
 {
