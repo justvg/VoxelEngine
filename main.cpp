@@ -139,19 +139,14 @@ int main(void)
 
 	Game.World.ChunkDimInMeters = 8.0f;
 	Game.World.BlockDimInMeters = Game.World.ChunkDimInMeters / CHUNK_DIM;
-	Game.World.Noise.SetNoiseType(FastNoise::SimplexFractal);
-	Game.World.Noise.SetSeed(1337);
-	Game.World.Noise.SetFrequency(0.02f);
-	Game.World.Noise.SetFractalOctaves(5);
-	Game.World.MaxNoiseValue = FLT_MIN;
-	Game.World.MinNoiseValue = FLT_MAX;
+	InitBiomes(&Game.World);
 
 	glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
 	camera *Camera = &Game.Camera;
-	Camera->Position.ChunkX = 0;
+	Camera->Position.ChunkX = 10000;
 	Camera->Position.ChunkY = 0;
-	Camera->Position.ChunkZ = 0;
+	Camera->Position.ChunkZ = 10000;
 	Camera->Position.Offset = V3(0.0f, 0.0f, 0.0f);
 	Camera->Front = V3(0.0f, 0.0f, -1.0f);
 	Camera->Pitch = 0.0f;
@@ -199,6 +194,8 @@ int main(void)
 		
 		EndSimulation(&Game.World);
 		EndTemporaryMemory(TempSimMemory);
+
+		std::cout << Camera->Position.ChunkX << " " << Camera->Position.ChunkY << " " << Camera->Position.ChunkZ << std::endl;
 
 		DeltaTime = (real32)glfwGetTime() - LastFrame;
 		// TODO(george): Implement sleeping instead of busy waiting

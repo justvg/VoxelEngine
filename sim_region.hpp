@@ -20,7 +20,7 @@ BeginSimulation(stack_allocator *Allocator, stack_allocator *WorldAllocator, wor
 	world_position MaxChunkP = MapIntoChunkSpace(World, SimRegion->Origin, Bounds.Max);
 	for (int32 ChunkZ = MinChunkP.ChunkZ; ChunkZ <= MaxChunkP.ChunkZ; ChunkZ++)
 	{
-		for (int32 ChunkY = MinChunkP.ChunkY; ChunkY <= 0; ChunkY++)
+		for (int32 ChunkY = -1; ChunkY <= 0; ChunkY++)
 		{
 			for (int32 ChunkX = MinChunkP.ChunkX; ChunkX <= MaxChunkP.ChunkX; ChunkX++)
 			{

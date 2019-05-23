@@ -3,7 +3,7 @@
 #include "GL\glew.h"
 #include "GLFW\glfw3.h"
 #include "irrKlang.h"
-#include "FastNoise.h"
+#include "simplexnoise.h"
 #include <Windows.h>
 #include <vector>
 #include <iostream>
