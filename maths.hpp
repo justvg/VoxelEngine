@@ -1,5 +1,16 @@
 #pragma once
 
+inline real32
+Lerp(real32 A, real32 B, real32 t)
+{
+	real32 Result = A + (B - A) * t;
+	return(Result);
+}
+
+//
+// rect3
+//
+
 struct rect3
 {
 	v3 Min;

@@ -387,7 +387,7 @@ GenerateChunkVertices(world_chunk *Chunk, real32 BlockDimInMeters)
 						B.Pos = V3(X, Y + BlockDimInMeters, Z);
 						C.Pos = V3(X + BlockDimInMeters, Y, Z);
 						D.Pos = V3(X + BlockDimInMeters, Y + BlockDimInMeters, Z);
-						A.Normal = B.Normal = C.Normal = D.Normal = V3(0.0f, 0.0f, 1.0f);
+						A.Normal = B.Normal = C.Normal = D.Normal = V3(0.0f, 0.0f, -1.0f);
 						AddQuad(Chunk->VertexBuffer, &A, &B, &C, &D);
 					}
 
@@ -397,7 +397,7 @@ GenerateChunkVertices(world_chunk *Chunk, real32 BlockDimInMeters)
 						B.Pos = V3(X + BlockDimInMeters, Y, Z + BlockDimInMeters);
 						C.Pos = V3(X, Y + BlockDimInMeters, Z + BlockDimInMeters);
 						D.Pos = V3(X + BlockDimInMeters, Y + BlockDimInMeters, Z + BlockDimInMeters);
-						A.Normal = B.Normal = C.Normal = D.Normal = V3(0.0f, 0.0f, -1.0f);
+						A.Normal = B.Normal = C.Normal = D.Normal = V3(0.0f, 0.0f, 1.0f);
 						AddQuad(Chunk->VertexBuffer, &A, &B, &C, &D);
 					}
 
