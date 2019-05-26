@@ -11,6 +11,12 @@ struct sim_region
 internal sim_region *
 BeginSimulation(stack_allocator *Allocator, stack_allocator *WorldAllocator, world *World, world_position Origin, rect3 Bounds)
 {
+	uint32 MaxSetupChunksPerFrame = 4;
+	uint32 SetupChunksPerFrame = 0;
+
+	uint32 MaxLoadChunksPerFrame = 4;
+	uint32 LoadChunksPerFrame = 0;
+
 	sim_region *SimRegion = PushStruct(Allocator, sim_region);
 	SimRegion->World = World;
 	SimRegion->Origin = Origin;
@@ -27,25 +33,31 @@ BeginSimulation(stack_allocator *Allocator, stack_allocator *WorldAllocator, wor
 				world_chunk *Chunk = GetWorldChunk(World, WorldAllocator, ChunkX, ChunkY, ChunkZ);
 				if (Chunk)
 				{
-					if (!Chunk->IsLoaded)
+					if (!Chunk->IsSetup && (SetupChunksPerFrame < MaxSetupChunksPerFrame))
 					{
-						LoadChunk(World, WorldAllocator, Chunk);
+						SetupChunksPerFrame++;
+						Chunk->NextChunkSetup = World->ChunksSetupList;
+						World->ChunksSetupList = Chunk;
 					}
-					else if (Chunk->IsModified)
+					else if (Chunk->IsSetup && !Chunk->IsLoaded && (LoadChunksPerFrame < MaxLoadChunksPerFrame))
 					{
-						UpdateChunk(World, Chunk);
+						LoadChunksPerFrame++;
+						Chunk->NextChunkLoad = World->ChunksLoadList;
+						World->ChunksLoadList = Chunk;
 					}
-					world_chunk *RenderChunk = PushStruct(Allocator, world_chunk);
-					*RenderChunk = *Chunk;
-					world_position ChunkPosition = {ChunkX, ChunkY, ChunkZ, V3(0.0f, 0.0f, 0.0f)};
-					RenderChunk->Translation = Substract(World, &ChunkPosition, &SimRegion->Origin);
-					RenderChunk->NextChunk = World->ChunksToRender;
-					World->ChunksToRender = RenderChunk;
+					else if(Chunk->IsSetup && Chunk->IsLoaded)
+					{
+						world_chunk *ChunkToRender = PushStruct(Allocator, world_chunk);
+						*ChunkToRender = *Chunk;
+						world_position ChunkPosition = {ChunkX, ChunkY, ChunkZ, V3(0.0f, 0.0f, 0.0f)};
+						ChunkToRender->Translation = Substract(World, &ChunkPosition, &SimRegion->Origin);
+						ChunkToRender->NextChunk = World->ChunksRenderList;
+						World->ChunksRenderList = ChunkToRender;
+					}
 				}
 			}
 		}
 	}
-	
 
 	return(SimRegion);
 }
@@ -53,5 +65,7 @@ BeginSimulation(stack_allocator *Allocator, stack_allocator *WorldAllocator, wor
 internal void
 EndSimulation(world *World)
 {
-	World->ChunksToRender = 0;
+	World->ChunksSetupList = 0;
+	World->ChunksLoadList = 0;
+	World->ChunksRenderList = 0;
 }

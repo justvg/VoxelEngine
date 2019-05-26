@@ -5,6 +5,7 @@
 #include "irrKlang.h"
 #include "simplexnoise.h"
 #include <Windows.h>
+#include <intrin.h>
 #include <vector>
 #include <iostream>
 
@@ -87,6 +88,22 @@ PushSize(stack_allocator *Allocator, memory_size Size)
 	return(Result);
 }
 
+#define PushStructSynchronized(Allocator, type, Semaphore) (type *)PushSizeSynchronized(Allocator, sizeof(type), Semaphore)
+#define PushArraySynchronized(Allocator, Count, type, Semaphore) (type *)PushSizeSynchronized(Allocator, (Count)*sizeof(type), Semaphore)
+inline void * 
+PushSizeSynchronized(stack_allocator *Allocator, memory_size Size, HANDLE Semaphore)
+{
+	WaitForSingleObjectEx(Semaphore, INFINITE, false);
+
+	Assert((Allocator->Used + Size) < Allocator->Size);
+	void *Result = Allocator->Base + Allocator->Used;
+	Allocator->Used += Size;
+
+	ReleaseSemaphore(Semaphore, 1, 0);
+
+	return(Result);
+}
+
 inline temporary_memory
 BeginTemporaryMemory(stack_allocator *Allocator)
 {
@@ -106,6 +123,7 @@ EndTemporaryMemory(temporary_memory TempMem)
 	Allocator->Used = TempMem.Used;
 }
 
+#include "job_system.hpp"
 #include <math.h>
 #include "vec.hpp"
 #include "maths.hpp"
@@ -127,11 +145,15 @@ struct camera
 	real32 RotSensetivity;
 };
 
+
 struct game
 {
 	game_input Input;
 	sound_system Sound;
 
+	job_system_queue *JobSystem;
+
+	HANDLE WorldAllocatorSemaphore;
 	stack_allocator WorldAllocator;
 	stack_allocator TranAllocator;
 
@@ -139,3 +161,4 @@ struct game
 
 	camera Camera;
 };
+
