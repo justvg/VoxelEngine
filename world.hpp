@@ -295,44 +295,6 @@ Substract(world *World, world_position *A, world_position *B)
 	return(Result);
 }
 
-internal void 
-LoadChunks(world *World)
-{
-	for(world_chunk *Chunk = World->ChunksLoadList; Chunk; Chunk = Chunk->NextChunkLoad)
-	{
-		glGenVertexArrays(1, &Chunk->VAO);
-		glGenBuffers(1, &Chunk->VBO);
-		glBindVertexArray(Chunk->VAO);
-		glBindBuffer(GL_ARRAY_BUFFER, Chunk->VBO);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(block_vertex)*Chunk->VertexBuffer->size(), &(*Chunk->VertexBuffer)[0], GL_STATIC_DRAW);
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(block_vertex), (void *)0);
-		glEnableVertexAttribArray(1);
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(block_vertex), (void *)(sizeof(real32)*3));
-		glEnableVertexAttribArray(2);
-		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(block_vertex), (void *)(sizeof(real32)*6));
-		glEnableVertexAttribArray(3);
-		glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(block_vertex), (void *)(sizeof(real32)*9));
-		glBindVertexArray(0);
-
-		Chunk->IsLoaded = true;
-	}
-}
-
-internal void
-RenderChunks(world *World, GLuint Shader, mat4 *ViewRotation)
-{
-	for(world_chunk *Chunk = World->ChunksRenderList; Chunk; Chunk = Chunk->NextChunk)
-	{
-		mat4 TranslationMatrix = Translation(Chunk->Translation);
-		mat4 Matrix = *ViewRotation * TranslationMatrix;
-		glUniformMatrix4fv(glGetUniformLocation(Shader, "View"), 1, GL_FALSE, Matrix.Elements);
-
-		glBindVertexArray(Chunk->VAO);
-		glDrawArrays(GL_TRIANGLES, 0, (GLsizei)Chunk->VertexBuffer->size());
-	}
-}
-
 internal v3
 GetCoordinatesFromWorldPos(world *World, world_position *WorldPos)
 {
@@ -359,6 +321,163 @@ RecanonicalizeCoords(world *World, world_position *Pos)
 	int32 NewChunkZOffset = (int32)floorf(Pos->Offset.z / World->ChunkDimInMeters);
 	Pos->ChunkZ += NewChunkZOffset;
 	Pos->Offset.z -= NewChunkZOffset*World->ChunkDimInMeters;
+}
+
+internal bool32
+FrustumCulling(mat4 MVP, real32 AABBMin, real32 AABBMax)
+{
+	v4 BoxClipSpace[8];
+
+	real32 MinX, MinY, MinZ;
+	real32 MaxX, MaxY, MaxZ;
+	MinX = MinY = MinZ = AABBMin;
+	MaxX = MaxY = MaxZ = AABBMax;
+
+	real32 Mat00MinX = MVP.Elements[0 + 0*4] * MinX;
+	real32 Mat00MaxX = MVP.Elements[0 + 0*4] * MaxX;
+	real32 Mat01MinY = MVP.Elements[0 + 1*4] * MinY;
+	real32 Mat01MaxY = MVP.Elements[0 + 1*4] * MaxY;
+	real32 Mat02MinZW = MVP.Elements[0 + 2*4] * MinZ + MVP.Elements[0 + 3*4];
+	real32 Mat02MaxZW = MVP.Elements[0 + 2*4] * MaxZ + MVP.Elements[0 + 3*4];
+
+	real32 Mat10MinX = MVP.Elements[1 + 0*4] * MinX;
+	real32 Mat10MaxX = MVP.Elements[1 + 0*4] * MaxX;
+	real32 Mat11MinY = MVP.Elements[1 + 1*4] * MinY;
+	real32 Mat11MaxY = MVP.Elements[1 + 1*4] * MaxY;
+	real32 Mat12MinZW = MVP.Elements[1 + 2*4] * MinZ + MVP.Elements[1 + 3*4];
+	real32 Mat12MaxZW = MVP.Elements[1 + 2*4] * MaxZ + MVP.Elements[1 + 3*4];
+
+	real32 Mat20MinX = MVP.Elements[2 + 0*4] * MinX;
+	real32 Mat20MaxX = MVP.Elements[2 + 0*4] * MaxX;
+	real32 Mat21MinY = MVP.Elements[2 + 1*4] * MinY;
+	real32 Mat21MaxY = MVP.Elements[2 + 1*4] * MaxY;
+	real32 Mat22MinZW = MVP.Elements[2 + 2*4] * MinZ + MVP.Elements[2 + 3*4];
+	real32 Mat22MaxZW = MVP.Elements[2 + 2*4] * MaxZ + MVP.Elements[2 + 3*4];
+
+	real32 Mat30MinX = MVP.Elements[3 + 0*4] * MinX;
+	real32 Mat30MaxX = MVP.Elements[3 + 0*4] * MaxX;
+	real32 Mat31MinY = MVP.Elements[3 + 1*4] * MinY;
+	real32 Mat31MaxY = MVP.Elements[3 + 1*4] * MaxY;
+	real32 Mat32MinZW = MVP.Elements[3 + 2*4] * MinZ + MVP.Elements[3 + 3*4];
+	real32 Mat32MaxZW = MVP.Elements[3 + 2*4] * MaxZ + MVP.Elements[3 + 3*4];
+
+	BoxClipSpace[0].x = Mat00MinX + Mat01MinY + Mat02MinZW; 
+	BoxClipSpace[0].y = Mat10MinX + Mat11MinY + Mat12MinZW; 
+	BoxClipSpace[0].z = Mat20MinX + Mat21MinY + Mat22MinZW; 
+	BoxClipSpace[0].w = Mat30MinX + Mat31MinY + Mat32MinZW; 
+	
+	BoxClipSpace[1].x = Mat00MaxX + Mat01MinY + Mat02MinZW; 
+	BoxClipSpace[1].y = Mat10MaxX + Mat11MinY + Mat12MinZW; 
+	BoxClipSpace[1].z = Mat20MaxX + Mat21MinY + Mat22MinZW; 
+	BoxClipSpace[1].w = Mat30MaxX + Mat31MinY + Mat32MinZW;
+
+	BoxClipSpace[2].x = Mat00MinX + Mat01MaxY + Mat02MinZW; 
+	BoxClipSpace[2].y = Mat10MinX + Mat11MaxY + Mat12MinZW; 
+	BoxClipSpace[2].z = Mat20MinX + Mat21MaxY + Mat22MinZW; 
+	BoxClipSpace[2].w = Mat30MinX + Mat31MaxY + Mat32MinZW;
+
+	BoxClipSpace[3].x = Mat00MaxX + Mat01MaxY + Mat02MinZW; 
+	BoxClipSpace[3].y = Mat10MaxX + Mat11MaxY + Mat12MinZW; 
+	BoxClipSpace[3].z = Mat20MaxX + Mat21MaxY + Mat22MinZW; 
+	BoxClipSpace[3].w = Mat30MaxX + Mat31MaxY + Mat32MinZW;
+
+	BoxClipSpace[4].x = Mat00MinX + Mat01MinY + Mat02MaxZW; 
+	BoxClipSpace[4].y = Mat10MinX + Mat11MinY + Mat12MaxZW; 
+	BoxClipSpace[4].z = Mat20MinX + Mat21MinY + Mat22MaxZW; 
+	BoxClipSpace[4].w = Mat30MinX + Mat31MinY + Mat32MaxZW;
+
+	BoxClipSpace[5].x = Mat00MaxX + Mat01MinY + Mat02MaxZW; 
+	BoxClipSpace[5].y = Mat10MaxX + Mat11MinY + Mat12MaxZW; 
+	BoxClipSpace[5].z = Mat20MaxX + Mat21MinY + Mat22MaxZW; 
+	BoxClipSpace[5].w = Mat30MaxX + Mat31MinY + Mat32MaxZW;
+
+	BoxClipSpace[6].x = Mat00MinX + Mat01MaxY + Mat02MaxZW; 
+	BoxClipSpace[6].y = Mat10MinX + Mat11MaxY + Mat12MaxZW; 
+	BoxClipSpace[6].z = Mat20MinX + Mat21MaxY + Mat22MaxZW; 
+	BoxClipSpace[6].w = Mat30MinX + Mat31MaxY + Mat32MaxZW;
+
+	BoxClipSpace[7].x = Mat00MaxX + Mat01MaxY + Mat02MaxZW; 
+	BoxClipSpace[7].y = Mat10MaxX + Mat11MaxY + Mat12MaxZW; 
+	BoxClipSpace[7].z = Mat20MaxX + Mat21MaxY + Mat22MaxZW; 
+	BoxClipSpace[7].w = Mat30MaxX + Mat31MaxY + Mat32MaxZW;
+
+	for(uint32 J = 0; J < 3; J++)
+	{
+		uint32 In = 0;
+		for(uint32 I = 0; (I < ArrayCount(BoxClipSpace)); I++)
+		{
+			if(BoxClipSpace[I].E[J] > -BoxClipSpace[I].w)
+			{
+				In++;
+				break;
+			}
+		}
+		if(!In)
+		{
+			return(false);
+		}
+	}
+
+	for(uint32 J = 0; J < 3; J++)
+	{
+		uint32 In = 0;
+		for(uint32 I = 0; (I < ArrayCount(BoxClipSpace)); I++)
+		{
+			if(BoxClipSpace[I].E[J] < BoxClipSpace[I].w)
+			{
+				In++;
+				break;
+			}
+		}
+		if(!In)
+		{
+			return(false);
+		}
+	}
+
+	return(true);
+}
+
+internal void 
+LoadChunks(world *World)
+{
+	for(world_chunk *Chunk = World->ChunksLoadList; Chunk; Chunk = Chunk->NextChunkLoad)
+	{
+		glGenVertexArrays(1, &Chunk->VAO);
+		glGenBuffers(1, &Chunk->VBO);
+		glBindVertexArray(Chunk->VAO);
+		glBindBuffer(GL_ARRAY_BUFFER, Chunk->VBO);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(block_vertex)*Chunk->VertexBuffer->size(), &(*Chunk->VertexBuffer)[0], GL_STATIC_DRAW);
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(block_vertex), (void *)0);
+		glEnableVertexAttribArray(1);
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(block_vertex), (void *)(sizeof(real32)*3));
+		glEnableVertexAttribArray(2);
+		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(block_vertex), (void *)(sizeof(real32)*6));
+		glEnableVertexAttribArray(3);
+		glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(block_vertex), (void *)(sizeof(real32)*9));
+		glBindVertexArray(0);
+
+		Chunk->IsLoaded = true;
+	}
+}
+
+internal void
+RenderChunks(world *World, GLuint Shader, mat4 *ViewRotation, mat4 *Projection)
+{
+	for(world_chunk *Chunk = World->ChunksRenderList; Chunk; Chunk = Chunk->NextChunk)
+	{
+			mat4 TranslationMatrix = Translation(Chunk->Translation);
+			mat4 Matrix = *ViewRotation * TranslationMatrix;
+			
+			mat4 MVP = *Projection * Matrix * Identity(1.0f);
+			if(FrustumCulling(MVP, 0.0f, World->ChunkDimInMeters))
+			{
+				glUniformMatrix4fv(glGetUniformLocation(Shader, "View"), 1, GL_FALSE, Matrix.Elements);
+				glBindVertexArray(Chunk->VAO);
+				glDrawArrays(GL_TRIANGLES, 0, (GLsizei)Chunk->VertexBuffer->size());
+			}
+	}
 }
 
 inline world_position

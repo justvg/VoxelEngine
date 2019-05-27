@@ -137,7 +137,7 @@ int main(void)
 
 	Game.JobSystem = &JobSystem;
 	Game.WorldAllocatorSemaphore = CreateSemaphoreEx(0, 1, 1, 0, 0, SEMAPHORE_ALL_ACCESS);
-	Game.Sound.InitAndLoadSounds();
+	// Game.Sound.InitAndLoadSounds();
 	// Game.Sound.PlaySound2D(sound_music);
 
 	void *MainMemory = malloc(Gigabytes(2));
@@ -149,7 +149,7 @@ int main(void)
 	InitializeStackAllocator(&Game.TranAllocator, Gigabytes(2), TransientMemory);
 
 	InitRaySample(&Game.World);
-	Game.World.ChunkDimInMeters = 8.0f;
+	Game.World.ChunkDimInMeters = CHUNK_DIM / 2.0f;
 	Game.World.BlockDimInMeters = Game.World.ChunkDimInMeters / CHUNK_DIM;
 	InitBiomes(&Game.World);
 
@@ -167,7 +167,7 @@ int main(void)
 	Camera->MoveSpeed = 8.0f;
 	Camera->RotSensetivity = 0.1f;
 
-	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+	glClearColor(0.2549f, 0.4117f, 1.0f, 1.0f);
 	glEnable(GL_MULTISAMPLE);
 #if 1
 	glEnable(GL_DEPTH_TEST);
@@ -181,7 +181,7 @@ int main(void)
 	shader TestShader("shaders/vertex.vert", "shaders/fragment.frag");
 
 	TestShader.Enable();
-	mat4 Projection = Perspective(45.0f, (float)Width / (float)Height, 0.1f, 100.0f);
+	mat4 Projection = Perspective(45.0f, (real32)Width / (real32)Height, 0.1f, 100.0f);
 	glUniformMatrix4fv(glGetUniformLocation(TestShader.ID, "Projection"), 1, GL_FALSE, Projection.Elements);
 
 	real32 DeltaTime = TargetSecondsForFrame;
@@ -192,11 +192,10 @@ int main(void)
 
 		// SoundEngine.Update(Camera->Position, Camera->Front);
 		ProcessInput(&Game, DeltaTime);
-
 		world_position Origin = Camera->Position;
 		rect3 Bounds;
-		Bounds.Min = V3(-40.0f, -2.0f, -40.0f);
-		Bounds.Max = V3(40.0f, 15.0f, 40.0f);
+		Bounds.Min = V3(-70.0f, -2.0f, -70.0f);
+		Bounds.Max = V3(70.0f, 15.0f, 70.0f);
 		temporary_memory TempSimMemory = BeginTemporaryMemory(&Game.TranAllocator);
 		BeginSimulation(&Game.TranAllocator, &Game.WorldAllocator, &Game.World, Origin, Bounds);
 
@@ -205,7 +204,7 @@ int main(void)
 
 		TestShader.Enable();
 		mat4 ViewRotation = RotationMatrixFromDirectionVector(Camera->Front);
-		RenderChunks(&Game.World, TestShader.ID, &ViewRotation);
+		RenderChunks(&Game.World, TestShader.ID, &ViewRotation, &Projection);
 
 		EndSimulation(&Game.World);
 		EndTemporaryMemory(TempSimMemory);
@@ -222,7 +221,7 @@ int main(void)
 #endif
 		LastFrame = (real32)glfwGetTime();
 
-		std::cout << DeltaTime << std::endl;
+		// std::cout << DeltaTime << std::endl;
 
 		glfwPollEvents();
 		glfwSwapBuffers(Window);
