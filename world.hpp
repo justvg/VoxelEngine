@@ -82,6 +82,7 @@ struct world_chunk
 	bool32 IsSetup;
 	bool32 IsLoaded;
 	bool32 IsModified;
+	bool32 IsNotEmpty;
 
 	GLuint VAO, VBO;
 
@@ -694,67 +695,110 @@ SetupChunk(void *Data)
 	Chunk->Occlusions = PushArraySynchronized(WorldAllocator, CHUNK_DIM*CHUNK_DIM*CHUNK_DIM, occlusion, WorldAllocatorSemaphore);
 	block *Blocks = Chunk->Blocks;
 	real32 BlockDimInMeters = World->BlockDimInMeters;
+	real32 MaxDistanceInY = World->ChunkDimInMeters * 4; // NOTE(georgy): Max chunks in Y = 4, not counting chunks with Y < 0
+
 	for (uint32 Z = 0; Z < CHUNK_DIM; Z++)
 	{
-		for (uint32 X = 0; X < CHUNK_DIM; X++)
-		{	
-			real32 Noise = octave_noise_2d(4.0f, 0.3f, 0.0075f,
-										   (real32)((Chunk->ChunkX * CHUNK_DIM) + X),
-										   (real32)((Chunk->ChunkZ * CHUNK_DIM) + Z));
-			real32 Height;
-			if (Chunk->ChunkY < 0)
-			{
-				Height = CHUNK_DIM;
-			}
-			else
-			{
-				Height = (Noise + 1.0f) * 0.5f * CHUNK_DIM;
-				Assert(Height > 0.0f);
-				Assert(Height <= CHUNK_DIM);
-			}
-			for (uint32 Y = 0; Y < Height; Y++)
-			{
-				GetVoxel(Blocks, X, Y, Z).Active = true;
-
-				real32 ColorNoise = octave_noise_3d(4.0f, 0.3f, 0.005f, (real32)((Chunk->ChunkX * CHUNK_DIM) + X), 
-																		(real32)((Chunk->ChunkY * CHUNK_DIM) + Y), 
-																		(real32)((Chunk->ChunkZ * CHUNK_DIM) + Z));
-				ColorNoise = (ColorNoise + 1.0f) * 0.5f;
-
-				real32 r, g, b;
-				block_type BlockType;
-				GetColorAndBlockType(World, Noise, ColorNoise, &r, &g, &b, &BlockType);
-				GetVoxel(Chunk->BlockTypes, X, Y, Z) = BlockType;
-				GetVoxel(Chunk->Colors, X, Y, Z) = GetUInt32Color(r, g, b);
-
-				for(uint32 RayIndex = 0; RayIndex < RAY_COUNT; RayIndex++)
+		for (uint32 Y = 0; Y < CHUNK_DIM; Y++)
+		{
+			for (uint32 X = 0; X < CHUNK_DIM; X++)
+			{	
+				real32 fY;
+				real32 fX, fZ;
+				if(Chunk->ChunkY < 0)
 				{
-					bool32 Collided = false;
-					for(uint32 OffsetIndex = 0; OffsetIndex < POINTS_ON_RAY; OffsetIndex++)
+					Chunk->IsNotEmpty = true;
+					GetVoxel(Blocks, X, Y, Z).Active = true;
+					fY = 0.0f;
+				}
+				else
+				{
+					fY = (Chunk->ChunkY*World->ChunkDimInMeters + Y*World->BlockDimInMeters) / MaxDistanceInY;
+					real32 PlateauFalloff;
+					if(fY < 0.1f)
 					{
-						uint32 XOff = (uint32)(X + roundf(World->RaySample.Rays[RayIndex].Offsets[OffsetIndex].x));
-						uint32 YOff = (uint32)(Y + roundf(World->RaySample.Rays[RayIndex].Offsets[OffsetIndex].y));
-						uint32 ZOff = (uint32)(Z + roundf(World->RaySample.Rays[RayIndex].Offsets[OffsetIndex].z));
-						if (XOff < 0 || XOff >= CHUNK_DIM ||
-							YOff < 0 || YOff >= CHUNK_DIM ||
-							ZOff < 0 || ZOff >= CHUNK_DIM)
-						{
-							break;
-						}
-						if(GetVoxel(Blocks, XOff, YOff, ZOff).Active)
-						{
-							Collided = true;
-							break;
-						}
+						PlateauFalloff = 4.0f;
 					}
-					if(!Collided)
+					else if(fY <= 0.4f) 
 					{
-						GetVoxel(Chunk->Occlusions, X, Y, Z).Left += World->RaySample.Rays[RayIndex].Left;
-						GetVoxel(Chunk->Occlusions, X, Y, Z).Right += World->RaySample.Rays[RayIndex].Right;
-						GetVoxel(Chunk->Occlusions, X, Y, Z).Top += World->RaySample.Rays[RayIndex].Top;
-						GetVoxel(Chunk->Occlusions, X, Y, Z).Bottom += World->RaySample.Rays[RayIndex].Bottom;
-						GetVoxel(Chunk->Occlusions, X, Y, Z).Front += World->RaySample.Rays[RayIndex].Front;
-						GetVoxel(Chunk->Occlusions, X, Y, Z).Back += World->RaySample.Rays[RayIndex].Back;
+						PlateauFalloff = 1.0f;
+					}
+					else if (fY < 0.8f)
+					{
+						PlateauFalloff = 1.0f - (fY - 0.4f)*2.5f;
+					}
+					else
+					{
+						PlateauFalloff = 0.0f;
+					}
+
+					real32 Noise = octave_noise_3d(4.0f, 0.5f, 0.007f,
+												   (real32)((Chunk->ChunkX * CHUNK_DIM) + X),
+												   (real32)((Chunk->ChunkY * CHUNK_DIM) + Y) + 20,
+												   (real32)((Chunk->ChunkZ * CHUNK_DIM) + Z));
+					Noise = (Noise + 1.0f) * 0.5f;
+
+					Noise = pow(Noise, 2.0f);
+					Noise *= PlateauFalloff;
+
+					real32 Caves = raw_noise_3d((real32)((Chunk->ChunkX * CHUNK_DIM) + X) * 0.01f,
+												(real32)(((Chunk->ChunkY * CHUNK_DIM) + Y) + 20) * 0.01f,
+												(real32)((Chunk->ChunkZ * CHUNK_DIM) + Z) * 0.01f);
+					Caves = (Caves + 1.0f) * 0.5f;
+					if (Caves < 0.3f)
+					{
+						Noise = 0.0f;
+					}
+					if(Noise > 0.4f)
+					{
+						GetVoxel(Blocks, X, Y, Z).Active = true;
+						Chunk->IsNotEmpty = true;
+					}
+				}
+
+				if(GetVoxel(Blocks, X, Y, Z).Active)
+				{
+
+					real32 ColorNoise = octave_noise_3d(4.0f, 0.3f, 0.005f, (real32)((Chunk->ChunkX * CHUNK_DIM) + X), 
+																					(real32)((Chunk->ChunkY * CHUNK_DIM) + Y), 
+																					(real32)((Chunk->ChunkZ * CHUNK_DIM) + Z));
+					ColorNoise = (ColorNoise + 1.0f) * 0.5f;
+
+					real32 r, g, b;
+					block_type BlockType;
+					GetColorAndBlockType(World, fY, ColorNoise, &r, &g, &b, &BlockType);
+					GetVoxel(Chunk->BlockTypes, X, Y, Z) = BlockType;
+					GetVoxel(Chunk->Colors, X, Y, Z) = GetUInt32Color(r, g, b);
+
+					for (uint32 RayIndex = 0; RayIndex < RAY_COUNT; RayIndex++)
+					{
+						bool32 Collided = false;
+						for (uint32 OffsetIndex = 0; OffsetIndex < POINTS_ON_RAY; OffsetIndex++)
+						{
+							uint32 XOff = (uint32)(X + roundf(World->RaySample.Rays[RayIndex].Offsets[OffsetIndex].x));
+							uint32 YOff = (uint32)(Y + roundf(World->RaySample.Rays[RayIndex].Offsets[OffsetIndex].y));
+							uint32 ZOff = (uint32)(Z + roundf(World->RaySample.Rays[RayIndex].Offsets[OffsetIndex].z));
+							if (XOff < 0 || XOff >= CHUNK_DIM ||
+								YOff < 0 || YOff >= CHUNK_DIM ||
+								ZOff < 0 || ZOff >= CHUNK_DIM)
+							{
+								break;
+							}
+							if (GetVoxel(Blocks, XOff, YOff, ZOff).Active)
+							{
+								Collided = true;
+								break;
+							}
+						}
+						if (!Collided)
+						{
+							GetVoxel(Chunk->Occlusions, X, Y, Z).Left += World->RaySample.Rays[RayIndex].Left;
+							GetVoxel(Chunk->Occlusions, X, Y, Z).Right += World->RaySample.Rays[RayIndex].Right;
+							GetVoxel(Chunk->Occlusions, X, Y, Z).Top += World->RaySample.Rays[RayIndex].Top;
+							GetVoxel(Chunk->Occlusions, X, Y, Z).Bottom += World->RaySample.Rays[RayIndex].Bottom;
+							GetVoxel(Chunk->Occlusions, X, Y, Z).Front += World->RaySample.Rays[RayIndex].Front;
+							GetVoxel(Chunk->Occlusions, X, Y, Z).Back += World->RaySample.Rays[RayIndex].Back;
+						}
 					}
 				}
 			}

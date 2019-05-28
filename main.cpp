@@ -164,7 +164,7 @@ int main(void)
 	Camera->Pitch = 0.0f;
 	Camera->Head = -90.0f;
 	// Camera->MoveSpeed = 3.0f;
-	Camera->MoveSpeed = 8.0f;
+	Camera->MoveSpeed = 15.0f;
 	Camera->RotSensetivity = 0.1f;
 
 	glClearColor(0.2549f, 0.4117f, 1.0f, 1.0f);
@@ -194,8 +194,8 @@ int main(void)
 		ProcessInput(&Game, DeltaTime);
 		world_position Origin = Camera->Position;
 		rect3 Bounds;
-		Bounds.Min = V3(-70.0f, -2.0f, -70.0f);
-		Bounds.Max = V3(70.0f, 15.0f, 70.0f);
+		Bounds.Min = V3(-60.0f, -2.0f, -60.0f);
+		Bounds.Max = V3(60.0f, 60.0f, 60.0f);
 		temporary_memory TempSimMemory = BeginTemporaryMemory(&Game.TranAllocator);
 		BeginSimulation(&Game.TranAllocator, &Game.WorldAllocator, &Game.World, Origin, Bounds);
 
@@ -213,7 +213,7 @@ int main(void)
 
 		DeltaTime = (real32)glfwGetTime() - LastFrame;
 		// TODO(george): Implement sleeping instead of busy waiting
-#if 0
+#if 1
 		while (DeltaTime < TargetSecondsForFrame)
 		{
 			DeltaTime = (real32)glfwGetTime() - LastFrame;
@@ -221,7 +221,7 @@ int main(void)
 #endif
 		LastFrame = (real32)glfwGetTime();
 
-		// std::cout << DeltaTime << std::endl;
+		std::cout << DeltaTime << std::endl;
 
 		glfwPollEvents();
 		glfwSwapBuffers(Window);

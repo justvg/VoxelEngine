@@ -26,7 +26,7 @@ BeginSimulation(stack_allocator *Allocator, stack_allocator *WorldAllocator, wor
 	world_position MaxChunkP = MapIntoChunkSpace(World, SimRegion->Origin, Bounds.Max);
 	for (int32 ChunkZ = MinChunkP.ChunkZ; ChunkZ <= MaxChunkP.ChunkZ; ChunkZ++)
 	{
-		for (int32 ChunkY = -1; ChunkY <= 0; ChunkY++)
+		for (int32 ChunkY = -1; ChunkY <= 3; ChunkY++)
 		{
 			for (int32 ChunkX = MinChunkP.ChunkX; ChunkX <= MaxChunkP.ChunkX; ChunkX++)
 			{
@@ -45,7 +45,7 @@ BeginSimulation(stack_allocator *Allocator, stack_allocator *WorldAllocator, wor
 						Chunk->NextChunkLoad = World->ChunksLoadList;
 						World->ChunksLoadList = Chunk;
 					}
-					else if(Chunk->IsSetup && Chunk->IsLoaded)
+					else if(Chunk->IsSetup && Chunk->IsLoaded && Chunk->IsNotEmpty)
 					{
 						world_chunk *ChunkToRender = PushStruct(Allocator, world_chunk);
 						*ChunkToRender = *Chunk;
