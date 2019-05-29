@@ -10,6 +10,22 @@ struct world_position
 	v3 Offset;
 };
 
+#define INVALID_POSITION INT32_MAX
+inline world_position
+InvalidPosition()
+{
+	world_position Result = {};
+	Result.ChunkX = INVALID_POSITION;
+	return(Result);
+}
+
+inline bool32 
+IsValid(world_position P)
+{
+	bool32 Result = P.ChunkX != INVALID_POSITION;
+	return(Result);
+}
+
 enum block_type
 {
 	BlockType_None,
@@ -60,13 +76,20 @@ struct occlusion
 	real32 Left, Right, Top, Bottom, Front, Back;
 };
 
+struct world_entity_block
+{
+	uint32 LowEntityCount;
+	uint32 LowEntityIndex[16];
+	world_entity_block *Next;
+};
+
 // TODO(georgy): Decide how to free chunks that haven't been used for a while;
 //				 From chunk we should free Blocks, VertexBuffer, VBO & VAO;
 //				 Maintain all loaded chunks and then once in some amount of time iterate over them and free that we don't need??
 //               Blocks can be freed using FirstFreeBlocks pointer;
 //               The contents of VertexBuffer can be freed using trick vector<block_vertex>().swap(VertexBuffer);
 //			     To free VBO & VAO use glDeleteBuffer and so on;
-//               Don't forget to unset IsLoaded!
+//               Don't forget to unset IsSetup, IsLoaded!
 struct world_chunk
 {
 	int32 ChunkX;
@@ -88,6 +111,8 @@ struct world_chunk
 
 	v3 Translation;
 
+	world_entity_block FirstBlock;
+
 	world_chunk *NextChunk;
 	world_chunk *NextChunkSetup;
 	world_chunk *NextChunkLoad;
@@ -108,6 +133,27 @@ struct ray_sample
 	occlusion_ray Rays[RAY_COUNT];	
 };
 
+enum entity_type
+{
+	EntityType_Null,
+
+	EntityType_Tree
+};
+
+struct sim_entity
+{
+	uint32 StorageIndex;
+	entity_type Type;
+	bool32 Updatable;
+	v3 P;
+};
+
+struct low_entity
+{
+	world_position P;
+	sim_entity Sim;
+};
+
 struct world
 {
 	real32 ChunkDimInMeters;
@@ -123,6 +169,11 @@ struct world
 
 	// NOTE(georgy): Must be a power of two!
 	world_chunk *ChunkHash[4096];
+
+	uint32 LowEntityCount;
+	low_entity LowEntities[10000];
+
+	world_entity_block *FirstFreeEntityBlock;
 };
 
 internal void
@@ -184,6 +235,65 @@ InitRaySample(world *World)
 	}
 }
 
+inline biome_height_boundary 
+InitBoundary(real32 HeightBoundary, real32 r1, real32 g1, real32 b1, 
+									real32 r2, real32 g2, real32 b2, block_type BlockType)
+{
+	biome_height_boundary Result;
+	Result.HeightBoundary = HeightBoundary;
+	Result.r1 = r1;
+	Result.g1 = g1;
+	Result.b1 = b1;
+	Result.r2 = r2;
+	Result.g2 = g2;
+	Result.b2 = b2;
+	Result.BlockType = BlockType;
+
+	return(Result);
+}
+
+internal void
+InitBiomes(world *World)
+{
+	World->Biomes[BiomeType_GrassLand].BiomeHeightBoundaries = new std::vector<biome_height_boundary>;
+	biome_height_boundary Boundary = InitBoundary(-0.5f, 0.4f, 0.4f, 0.4f, 0.25f, 0.3f, 0.27f, BlockType_Stone);
+	World->Biomes[BiomeType_GrassLand].BiomeHeightBoundaries->push_back(Boundary);
+	Boundary = InitBoundary(0.0f, 0.84f, 0.64f, 0.24f, 0.4f, 0.19f, 0.1f, BlockType_Dirt);
+	World->Biomes[BiomeType_GrassLand].BiomeHeightBoundaries->push_back(Boundary);
+	Boundary = InitBoundary(0.5f, 0.0f, 0.46f, 0.16f, 0.65f, 0.8f, 0.0f, BlockType_Grass);
+	World->Biomes[BiomeType_GrassLand].BiomeHeightBoundaries->push_back(Boundary);
+	Boundary = InitBoundary(1.0f, 0.75f, 0.75f, 0.75f, 0.67f, 0.55f, 0.7f, BlockType_Snow);
+	World->Biomes[BiomeType_GrassLand].BiomeHeightBoundaries->push_back(Boundary);
+}
+
+inline void 
+InitializeWorld(world *World)
+{
+	InitRaySample(World);
+	World->ChunkDimInMeters = CHUNK_DIM / 2.0f;
+	World->BlockDimInMeters = World->ChunkDimInMeters / CHUNK_DIM;
+	World->LowEntityCount = 0;
+	World->FirstFreeEntityBlock = 0;
+	InitBiomes(World);
+}
+
+inline bool32
+AreInTheSameChunk(world *World, world_position *A, world_position *B)
+{
+	Assert(A->Offset.x < World->ChunkDimInMeters);
+	Assert(A->Offset.y < World->ChunkDimInMeters);
+	Assert(A->Offset.z < World->ChunkDimInMeters);
+	Assert(B->Offset.x < World->ChunkDimInMeters);
+	Assert(B->Offset.y < World->ChunkDimInMeters);
+	Assert(B->Offset.z < World->ChunkDimInMeters);
+
+	bool32 Result = ((A->ChunkX == B->ChunkX) &&
+					 (A->ChunkY == B->ChunkY) &&
+					 (A->ChunkZ == B->ChunkZ));
+
+	return(Result);
+}
+
 internal uint32
 GetUInt32Color(real32 r, real32 g, real32 b)
 {
@@ -217,37 +327,6 @@ GetRGBColorFromUInt32(uint32 Color)
 	Result.b = (b / 255.0f);
 
 	return(Result);
-}
-
-inline biome_height_boundary 
-InitBoundary(real32 HeightBoundary, real32 r1, real32 g1, real32 b1, 
-									real32 r2, real32 g2, real32 b2, block_type BlockType)
-{
-	biome_height_boundary Result;
-	Result.HeightBoundary = HeightBoundary;
-	Result.r1 = r1;
-	Result.g1 = g1;
-	Result.b1 = b1;
-	Result.r2 = r2;
-	Result.g2 = g2;
-	Result.b2 = b2;
-	Result.BlockType = BlockType;
-
-	return(Result);
-}
-
-internal void
-InitBiomes(world *World)
-{
-	World->Biomes[BiomeType_GrassLand].BiomeHeightBoundaries = new std::vector<biome_height_boundary>;
-	biome_height_boundary Boundary = InitBoundary(-0.5f, 0.4f, 0.4f, 0.4f, 0.25f, 0.3f, 0.27f, BlockType_Stone);
-	World->Biomes[BiomeType_GrassLand].BiomeHeightBoundaries->push_back(Boundary);
-	Boundary = InitBoundary(0.0f, 0.84f, 0.64f, 0.24f, 0.4f, 0.19f, 0.1f, BlockType_Dirt);
-	World->Biomes[BiomeType_GrassLand].BiomeHeightBoundaries->push_back(Boundary);
-	Boundary = InitBoundary(0.5f, 0.0f, 0.46f, 0.16f, 0.65f, 0.8f, 0.0f, BlockType_Grass);
-	World->Biomes[BiomeType_GrassLand].BiomeHeightBoundaries->push_back(Boundary);
-	Boundary = InitBoundary(1.0f, 0.75f, 0.75f, 0.75f, 0.67f, 0.55f, 0.7f, BlockType_Snow);
-	World->Biomes[BiomeType_GrassLand].BiomeHeightBoundaries->push_back(Boundary);
 }
 
 internal void
@@ -468,16 +547,16 @@ RenderChunks(world *World, GLuint Shader, mat4 *ViewRotation, mat4 *Projection)
 {
 	for(world_chunk *Chunk = World->ChunksRenderList; Chunk; Chunk = Chunk->NextChunk)
 	{
-			mat4 TranslationMatrix = Translation(Chunk->Translation);
-			mat4 Matrix = *ViewRotation * TranslationMatrix;
-			
-			mat4 MVP = *Projection * Matrix * Identity(1.0f);
-			if(FrustumCulling(MVP, 0.0f, World->ChunkDimInMeters))
-			{
-				glUniformMatrix4fv(glGetUniformLocation(Shader, "View"), 1, GL_FALSE, Matrix.Elements);
-				glBindVertexArray(Chunk->VAO);
-				glDrawArrays(GL_TRIANGLES, 0, (GLsizei)Chunk->VertexBuffer->size());
-			}
+		mat4 TranslationMatrix = Translation(Chunk->Translation);
+		mat4 Matrix = *ViewRotation * TranslationMatrix;
+		
+		mat4 MVP = *Projection * Matrix * Identity(1.0f);
+		if(FrustumCulling(MVP, 0.0f, World->ChunkDimInMeters))
+		{
+			glUniformMatrix4fv(glGetUniformLocation(Shader, "View"), 1, GL_FALSE, Matrix.Elements);
+			glBindVertexArray(Chunk->VAO);
+			glDrawArrays(GL_TRIANGLES, 0, (GLsizei)Chunk->VertexBuffer->size());
+		}
 	}
 }
 
@@ -689,6 +768,8 @@ SetupChunk(void *Data)
 	stack_allocator *WorldAllocator = Work->WorldAllocator;
 	world_chunk *Chunk = Work->Chunk;
 	HANDLE WorldAllocatorSemaphore = Work->WorldAllocatorSemaphore;
+	// Chunk->FirstBlock.LowEntityCount = 0;
+	Chunk->IsNotEmpty = false;
 	Chunk->Blocks = PushArraySynchronized(WorldAllocator, CHUNK_DIM*CHUNK_DIM*CHUNK_DIM, block, WorldAllocatorSemaphore);
 	Chunk->Colors = PushArraySynchronized(WorldAllocator, CHUNK_DIM*CHUNK_DIM*CHUNK_DIM, uint32, WorldAllocatorSemaphore);
 	Chunk->BlockTypes = PushArraySynchronized(WorldAllocator, CHUNK_DIM*CHUNK_DIM*CHUNK_DIM, block_type, WorldAllocatorSemaphore);
@@ -704,7 +785,6 @@ SetupChunk(void *Data)
 			for (uint32 X = 0; X < CHUNK_DIM; X++)
 			{	
 				real32 fY;
-				real32 fX, fZ;
 				if(Chunk->ChunkY < 0)
 				{
 					Chunk->IsNotEmpty = true;
@@ -758,10 +838,9 @@ SetupChunk(void *Data)
 
 				if(GetVoxel(Blocks, X, Y, Z).Active)
 				{
-
-					real32 ColorNoise = octave_noise_3d(4.0f, 0.3f, 0.005f, (real32)((Chunk->ChunkX * CHUNK_DIM) + X), 
-																					(real32)((Chunk->ChunkY * CHUNK_DIM) + Y), 
-																					(real32)((Chunk->ChunkZ * CHUNK_DIM) + Z));
+					real32 ColorNoise = octave_noise_3d(4.0f, 0.3f, 0.05f, (real32)((Chunk->ChunkX * CHUNK_DIM) + X), 
+																		   (real32)((Chunk->ChunkY * CHUNK_DIM) + Y), 
+																		   (real32)((Chunk->ChunkZ * CHUNK_DIM) + Z));
 					ColorNoise = (ColorNoise + 1.0f) * 0.5f;
 
 					real32 r, g, b;
@@ -851,3 +930,99 @@ UpdateChunk(world *World, world_chunk *Chunk)
 	glBindVertexArray(0);
 }
 #endif
+
+internal void
+ChangeEntityLocation(world *World, stack_allocator *WorldAllocator, uint32 EntityIndex, low_entity *LowEntity, world_position NewPInit)
+{
+	world_position *OldP = 0;
+	world_position *NewP = 0;
+
+	if(IsValid(LowEntity->P))
+	{
+		OldP = &LowEntity->P;
+	}
+	
+	if(IsValid(NewPInit))
+	{
+		NewP = &NewPInit;
+	}
+
+	Assert(!OldP || IsValid(*OldP));
+	Assert(!NewP || IsValid(*NewP));
+
+	if(OldP && NewP && AreInTheSameChunk(World, OldP, NewP))
+	{
+
+	}
+	else
+	{
+		if(OldP)
+		{
+			world_chunk *Chunk = GetWorldChunk(World, WorldAllocator, OldP->ChunkX, OldP->ChunkY, OldP->ChunkZ);
+			Assert(Chunk);
+			world_entity_block *FirstBlock = &Chunk->FirstBlock; 
+			bool32 NotFound = true;
+			for(world_entity_block *Block = FirstBlock; Block && NotFound; Block = Block->Next)
+			{
+				for(uint32 Index = 0; Index < Block->LowEntityCount && NotFound; Index++)
+				{
+					if(Block->LowEntityIndex[Index] == EntityIndex)
+					{
+						Assert(FirstBlock->LowEntityCount > 0);
+						Block->LowEntityIndex[Index] = FirstBlock->LowEntityIndex[--FirstBlock->LowEntityCount];
+
+						if(FirstBlock->LowEntityCount == 0)
+						{
+							if(FirstBlock->Next)
+							{
+								world_entity_block *NextBlock = FirstBlock->Next;
+								*FirstBlock = *NextBlock;
+
+								NextBlock->Next = World->FirstFreeEntityBlock;
+								World->FirstFreeEntityBlock = NextBlock;
+							}
+						}
+
+						NotFound = false;
+					}
+				} 
+			}
+		}
+
+		if(NewP)
+		{
+			world_chunk *Chunk = GetWorldChunk(World, WorldAllocator, NewP->ChunkX, NewP->ChunkY, NewP->ChunkZ);
+			Assert(Chunk);
+
+			world_entity_block *Block = &Chunk->FirstBlock;
+			if(Block->LowEntityCount == ArrayCount(Block->LowEntityIndex))
+			{
+				world_entity_block *OldBlock = World->FirstFreeEntityBlock;
+				if(OldBlock)
+				{
+					World->FirstFreeEntityBlock = OldBlock->Next;
+				}
+				else
+				{
+					OldBlock = PushStruct(WorldAllocator, world_entity_block);
+				}
+
+				*OldBlock = *Block;
+				Block->Next = OldBlock;
+				Block->LowEntityCount = 0;
+			}
+
+			Assert(Block->LowEntityCount < ArrayCount(Block->LowEntityIndex));
+			Block->LowEntityIndex[Block->LowEntityCount++] = EntityIndex;
+		}
+	}
+
+	if(NewP)
+	{
+		LowEntity->P = *NewP;
+	}
+	else
+	{
+		LowEntity->P = InvalidPosition();
+	}
+}

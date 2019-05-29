@@ -133,6 +133,21 @@ EndTemporaryMemory(temporary_memory TempMem)
 #include "world.hpp"
 #include "sim_region.hpp"
 
+internal void 
+AddLowEntity(world *World, stack_allocator *WorldAllocator, entity_type Type, world_position P)
+{
+	Assert(World->LowEntityCount < ArrayCount(World->LowEntities));
+	uint32 EntityIndex = World->LowEntityCount++;
+
+	low_entity *LowEntity = World->LowEntities + EntityIndex;
+	*LowEntity = {};
+	LowEntity->Sim.StorageIndex = EntityIndex;
+	LowEntity->Sim.Type = Type;
+	LowEntity->P = InvalidPosition();
+
+	ChangeEntityLocation(World, WorldAllocator, EntityIndex, LowEntity, P);
+}
+
 struct camera
 {
 	world_position Position;
@@ -144,7 +159,6 @@ struct camera
 	real32 MoveSpeed;
 	real32 RotSensetivity;
 };
-
 
 struct game
 {
@@ -159,6 +173,6 @@ struct game
 
 	world World;
 
-	camera Camera;
+	camera Camera;	
 };
 

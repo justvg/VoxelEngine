@@ -129,6 +129,61 @@ int main(void)
 
 	glewInit();
 
+	real32 TestCubeVertices[] = {
+		// Positions          
+		-0.5f, -0.5f, -0.5f,  
+		0.5f, -0.5f, -0.5f,  
+		0.5f,  0.5f, -0.5f,  
+		0.5f,  0.5f, -0.5f,  
+		-0.5f,  0.5f, -0.5f,  
+		-0.5f, -0.5f, -0.5f,  
+
+		-0.5f, -0.5f,  0.5f,
+		0.5f, -0.5f,  0.5f,
+		0.5f,  0.5f,  0.5f,
+		0.5f,  0.5f,  0.5f,
+		-0.5f,  0.5f,  0.5f,
+		-0.5f, -0.5f,  0.5f,
+
+		-0.5f,  0.5f,  0.5f,
+		-0.5f,  0.5f, -0.5f,
+		-0.5f, -0.5f, -0.5f,
+		-0.5f, -0.5f, -0.5f,
+		-0.5f, -0.5f,  0.5f,
+		-0.5f,  0.5f,  0.5f, 
+
+		0.5f,  0.5f,  0.5f,  
+		0.5f,  0.5f, -0.5f,  
+		0.5f, -0.5f, -0.5f,  
+		0.5f, -0.5f, -0.5f,  
+		0.5f, -0.5f,  0.5f,  
+		0.5f,  0.5f,  0.5f,  
+
+		-0.5f, -0.5f, -0.5f,  
+		0.5f, -0.5f, -0.5f,  
+		0.5f, -0.5f,  0.5f,  
+		0.5f, -0.5f,  0.5f,  
+		-0.5f, -0.5f,  0.5f,  
+		-0.5f, -0.5f, -0.5f,  
+
+		-0.5f,  0.5f, -0.5f,  
+		0.5f,  0.5f, -0.5f,  
+		0.5f,  0.5f,  0.5f,  
+		0.5f,  0.5f,  0.5f,  
+		-0.5f,  0.5f,  0.5f,  
+		-0.5f,  0.5f, -0.5f
+	};
+	test_model TestModel;
+	CopyMemory(TestModel.VertexBuffer, TestCubeVertices, 36*sizeof(real32));
+	glGenVertexArrays(1, &TestModel.VAO);
+	glGenBuffers(1, &TestModel.VBO);
+	glBindVertexArray(TestModel.VAO);
+	glBindBuffer(GL_ARRAY_BUFFER, TestModel.VBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(TestModel.VertexBuffer), TestModel.VertexBuffer, GL_STATIC_DRAW);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void *)0);
+	glBindVertexArray(0);
+
 	GLFWmonitor *Monitor = glfwGetPrimaryMonitor();
 	const GLFWvidmode *VidMode = glfwGetVideoMode(Monitor);
 	// real32 GameUpdateHz = VidMode->refreshRate / 2.0f;
@@ -148,10 +203,8 @@ int main(void)
 	ZeroMemory(TransientMemory, Gigabytes(2));
 	InitializeStackAllocator(&Game.TranAllocator, Gigabytes(2), TransientMemory);
 
-	InitRaySample(&Game.World);
-	Game.World.ChunkDimInMeters = CHUNK_DIM / 2.0f;
-	Game.World.BlockDimInMeters = Game.World.ChunkDimInMeters / CHUNK_DIM;
-	InitBiomes(&Game.World);
+	world *World = &Game.World;
+	InitializeWorld(World);
 
 	glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
@@ -184,6 +237,9 @@ int main(void)
 	mat4 Projection = Perspective(45.0f, (real32)Width / (real32)Height, 0.1f, 100.0f);
 	glUniformMatrix4fv(glGetUniformLocation(TestShader.ID, "Projection"), 1, GL_FALSE, Projection.Elements);
 
+	world_position TestPosition = {10004, 1, 10000, V3(0.0f, 0.0f, 0.0f)};
+	AddLowEntity(World, &Game.WorldAllocator, EntityType_Tree, TestPosition);
+
 	real32 DeltaTime = TargetSecondsForFrame;
 	real32 LastFrame = (real32)glfwGetTime();
 	while (!glfwWindowShouldClose(Window))
@@ -192,12 +248,13 @@ int main(void)
 
 		// SoundEngine.Update(Camera->Position, Camera->Front);
 		ProcessInput(&Game, DeltaTime);
+
 		world_position Origin = Camera->Position;
 		rect3 Bounds;
 		Bounds.Min = V3(-60.0f, -2.0f, -60.0f);
 		Bounds.Max = V3(60.0f, 60.0f, 60.0f);
 		temporary_memory TempSimMemory = BeginTemporaryMemory(&Game.TranAllocator);
-		BeginSimulation(&Game.TranAllocator, &Game.WorldAllocator, &Game.World, Origin, Bounds);
+		sim_region *SimRegion = BeginSimulation(&Game.TranAllocator, &Game.WorldAllocator, &Game.World, Origin, Bounds);
 
 		SetupChunks(Game.JobSystem, &Game.World, &Game.WorldAllocator, &Game.TranAllocator, Game.WorldAllocatorSemaphore);
 		LoadChunks(&Game.World);
@@ -206,10 +263,12 @@ int main(void)
 		mat4 ViewRotation = RotationMatrixFromDirectionVector(Camera->Front);
 		RenderChunks(&Game.World, TestShader.ID, &ViewRotation, &Projection);
 
+		RenderEntities(World, SimRegion, TestShader.ID, &ViewRotation, &TestModel);
+
 		EndSimulation(&Game.World);
 		EndTemporaryMemory(TempSimMemory);
 
-		// std::cout << Camera->Position.ChunkX << " " << Camera->Position.ChunkY << " " << Camera->Position.ChunkZ << std::endl;
+		std::cout << Camera->Position.ChunkX << " " << Camera->Position.ChunkY << " " << Camera->Position.ChunkZ << std::endl;
 
 		DeltaTime = (real32)glfwGetTime() - LastFrame;
 		// TODO(george): Implement sleeping instead of busy waiting
@@ -221,7 +280,7 @@ int main(void)
 #endif
 		LastFrame = (real32)glfwGetTime();
 
-		std::cout << DeltaTime << std::endl;
+		// std::cout << DeltaTime << std::endl;
 
 		glfwPollEvents();
 		glfwSwapBuffers(Window);
