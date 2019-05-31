@@ -2,11 +2,11 @@
 
 enum sound_sources_ids
 {
-	sound_music,
-	sound_hit,
-	sound_jump,
+	Sound_Music,
+	Sound_Hit,
+	Sound_Jump,
 
-	sound_count
+	Sound_Count
 };
 
 struct sound_system
@@ -14,11 +14,11 @@ struct sound_system
 	// TODO(george): Free memory if sound isn't needed. Can use irrklang::...::drop() for this;
 	//				 Load sounds after sound engine initialization;
 	//				 Edit sound (like sound volume). Can use ISoundSources for this;
-	//				 Random sound depending on a sound type (can have sound_hit1, sound_hit2 & choose randomly between them);
+	//				 Random sound depending on a sound type (can have Sound_Hit1, Sound_Hit2 & choose randomly between them);
 
 	irrklang::ISoundEngine *Engine;
 
-	irrklang::ISoundSource *Sources[sound_count];
+	irrklang::ISoundSource *Sources[Sound_Count];
 
 	void InitAndLoadSounds();
 
@@ -32,9 +32,9 @@ sound_system::InitAndLoadSounds()
 {
 	Engine = irrklang::createIrrKlangDevice();
 
-	Sources[sound_hit] = Engine->addSoundSourceFromFile("data/sound/Hit_00.wav", irrklang::ESM_AUTO_DETECT, true);
-	Sources[sound_jump] = Engine->addSoundSourceFromFile("data/sound/Jump_00.wav", irrklang::ESM_AUTO_DETECT, true);
-	Sources[sound_music] = Engine->addSoundSourceFromFile("data/sound/Music.wav", irrklang::ESM_AUTO_DETECT, true);
+	Sources[Sound_Hit] = Engine->addSoundSourceFromFile("data/sound/Hit_00.wav", irrklang::ESM_AUTO_DETECT, true);
+	Sources[Sound_Jump] = Engine->addSoundSourceFromFile("data/sound/Jump_00.wav", irrklang::ESM_AUTO_DETECT, true);
+	Sources[Sound_Music] = Engine->addSoundSourceFromFile("data/sound/Music.wav", irrklang::ESM_AUTO_DETECT, true);
 }
 
 void

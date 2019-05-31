@@ -48,35 +48,14 @@ GLFWCursorPositionCallback(GLFWwindow* Window, double XPos, double YPos)
 }
 
 internal void
-ProcessInput(game *Game, real32 DeltaTime)
+ProcessInput(game_input *Input, camera *Camera, hero_control *Hero, real32 DeltaTime)
 {
-	v3 CameraUp = V3(0.0f, 1.0f, 0.0f);
-
-	real32 CameraSpeed = Game->Camera.MoveSpeed*DeltaTime;
-	if (Game->Input.MoveForward)
-	{
-		Game->Camera.Position.Offset += Game->Camera.Front*CameraSpeed;
-	}
-	if (Game->Input.MoveBack)
-	{
-		Game->Camera.Position.Offset -= Game->Camera.Front*CameraSpeed;
-	}
-	if (Game->Input.MoveLeft)
-	{
-		Game->Camera.Position.Offset -= CameraSpeed*Normalize(Cross(Game->Camera.Front, CameraUp));
-	}
-	if (Game->Input.MoveRight)
-	{
-		Game->Camera.Position.Offset += CameraSpeed*Normalize(Cross(Game->Camera.Front, CameraUp));
-	}
-	RecanonicalizeCoords(&Game->World, &Game->Camera.Position);
-
 	int32 X, Y;
-	X = Game->Input.MouseX;
-	Y = Game->Input.MouseY;
+	X = Input->MouseX;
+	Y = Input->MouseY;
 	static int32 LastMouseX = 0;
 	static int32 LastMouseY = 0;
-	static bool FirstMouse = true;
+	static bool32 FirstMouse = true;
 	if (FirstMouse)
 	{
 		LastMouseX = X;
@@ -84,24 +63,37 @@ ProcessInput(game *Game, real32 DeltaTime)
 		FirstMouse = false;
 	}
 
-	real32 XOffset = (real32)((X - LastMouseX)*Game->Camera.RotSensetivity);
-	real32 YOffset = (real32)((LastMouseY - Y)*Game->Camera.RotSensetivity);
-
-	Game->Camera.Pitch += YOffset;
-	Game->Camera.Head += XOffset;
-
-	Game->Camera.Pitch = Game->Camera.Pitch > 89.0f ? 89.0f : Game->Camera.Pitch;
-	Game->Camera.Pitch = Game->Camera.Pitch < -89.0f ? -89.0f : Game->Camera.Pitch;
+	real32 XOffset = (real32)((X - LastMouseX)*Camera->RotSensetivity);
+	real32 YOffset = (real32)((LastMouseY - Y)*Camera->RotSensetivity);
 
 	LastMouseX = X;
 	LastMouseY = Y;
 
-	float PitchRadians = Game->Camera.Pitch * (float)M_PI / 180.0f;
-	float HeadRadians = Game->Camera.Head * (float)M_PI / 180.0f;
-	Game->Camera.Front.x = cosf(PitchRadians)*cosf(HeadRadians);
-	Game->Camera.Front.y = sinf(PitchRadians);
-	Game->Camera.Front.z = cosf(PitchRadians)*sinf(HeadRadians);
-	Game->Camera.Front.Normalize();
+	Camera->Pitch += YOffset;
+	Camera->Head += XOffset;
+
+	Camera->Pitch = Camera->Pitch > 89.0f ? 89.0f : Camera->Pitch;
+	Camera->Pitch = Camera->Pitch < -89.0f ? -89.0f : Camera->Pitch;
+
+	v3 HeroMovementDirection = Normalize(V3(-Camera->OffsetFromHero.x, 0.0f, -Camera->OffsetFromHero.z));
+	v3 CameraUp = {0.0f, 1.0f, 0.0f};
+	Hero->ddP = {};
+	if(Input->MoveForward)
+	{
+		Hero->ddP += HeroMovementDirection;
+	}
+	if(Input->MoveBack)
+	{
+		Hero->ddP -= HeroMovementDirection;
+	}
+	if(Input->MoveLeft)
+	{
+		Hero->ddP -= Normalize(Cross(HeroMovementDirection, CameraUp));
+	}
+	if(Input->MoveRight)
+	{
+		Hero->ddP += Normalize(Cross(HeroMovementDirection, CameraUp));
+	}
 }
 
 int main(void)
@@ -129,61 +121,6 @@ int main(void)
 
 	glewInit();
 
-	real32 TestCubeVertices[] = {
-		// Positions          
-		-0.5f, -0.5f, -0.5f,  
-		0.5f, -0.5f, -0.5f,  
-		0.5f,  0.5f, -0.5f,  
-		0.5f,  0.5f, -0.5f,  
-		-0.5f,  0.5f, -0.5f,  
-		-0.5f, -0.5f, -0.5f,  
-
-		-0.5f, -0.5f,  0.5f,
-		0.5f, -0.5f,  0.5f,
-		0.5f,  0.5f,  0.5f,
-		0.5f,  0.5f,  0.5f,
-		-0.5f,  0.5f,  0.5f,
-		-0.5f, -0.5f,  0.5f,
-
-		-0.5f,  0.5f,  0.5f,
-		-0.5f,  0.5f, -0.5f,
-		-0.5f, -0.5f, -0.5f,
-		-0.5f, -0.5f, -0.5f,
-		-0.5f, -0.5f,  0.5f,
-		-0.5f,  0.5f,  0.5f, 
-
-		0.5f,  0.5f,  0.5f,  
-		0.5f,  0.5f, -0.5f,  
-		0.5f, -0.5f, -0.5f,  
-		0.5f, -0.5f, -0.5f,  
-		0.5f, -0.5f,  0.5f,  
-		0.5f,  0.5f,  0.5f,  
-
-		-0.5f, -0.5f, -0.5f,  
-		0.5f, -0.5f, -0.5f,  
-		0.5f, -0.5f,  0.5f,  
-		0.5f, -0.5f,  0.5f,  
-		-0.5f, -0.5f,  0.5f,  
-		-0.5f, -0.5f, -0.5f,  
-
-		-0.5f,  0.5f, -0.5f,  
-		0.5f,  0.5f, -0.5f,  
-		0.5f,  0.5f,  0.5f,  
-		0.5f,  0.5f,  0.5f,  
-		-0.5f,  0.5f,  0.5f,  
-		-0.5f,  0.5f, -0.5f
-	};
-	test_model TestModel;
-	CopyMemory(TestModel.VertexBuffer, TestCubeVertices, 36*sizeof(real32));
-	glGenVertexArrays(1, &TestModel.VAO);
-	glGenBuffers(1, &TestModel.VBO);
-	glBindVertexArray(TestModel.VAO);
-	glBindBuffer(GL_ARRAY_BUFFER, TestModel.VBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(TestModel.VertexBuffer), TestModel.VertexBuffer, GL_STATIC_DRAW);
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void *)0);
-	glBindVertexArray(0);
-
 	GLFWmonitor *Monitor = glfwGetPrimaryMonitor();
 	const GLFWvidmode *VidMode = glfwGetVideoMode(Monitor);
 	// real32 GameUpdateHz = VidMode->refreshRate / 2.0f;
@@ -203,22 +140,19 @@ int main(void)
 	ZeroMemory(TransientMemory, Gigabytes(2));
 	InitializeStackAllocator(&Game.TranAllocator, Gigabytes(2), TransientMemory);
 
+	Game.Assets = InitializeGameAssets(&Game.TranAllocator, Megabytes(64));
+
 	world *World = &Game.World;
 	InitializeWorld(World);
 
 	glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
 	camera *Camera = &Game.Camera;
-	Camera->Position.ChunkX = 10000;
-	Camera->Position.ChunkY = 0;
-	Camera->Position.ChunkZ = 10000;
-	Camera->Position.Offset = V3(0.0f, 0.0f, 0.0f);
-	Camera->Front = V3(0.0f, 0.0f, -1.0f);
+	Camera->DistanceFromHero = 5.0f;
 	Camera->Pitch = 0.0f;
-	Camera->Head = -90.0f;
-	// Camera->MoveSpeed = 3.0f;
-	Camera->MoveSpeed = 15.0f;
+	Camera->Head = 0.0f;
 	Camera->RotSensetivity = 0.1f;
+	Camera->OffsetFromHero = V3(0.0f, 0.0f, 5.0f);
 
 	glClearColor(0.2549f, 0.4117f, 1.0f, 1.0f);
 	glEnable(GL_MULTISAMPLE);
@@ -237,8 +171,8 @@ int main(void)
 	mat4 Projection = Perspective(45.0f, (real32)Width / (real32)Height, 0.1f, 100.0f);
 	glUniformMatrix4fv(glGetUniformLocation(TestShader.ID, "Projection"), 1, GL_FALSE, Projection.Elements);
 
-	world_position TestPosition = {10004, 1, 10000, V3(0.0f, 0.0f, 0.0f)};
-	AddLowEntity(World, &Game.WorldAllocator, EntityType_Tree, TestPosition);
+	world_position TestHeroPosition = {10004, 1, 10000, V3(0.0f, 0.0f, 0.0f)};
+	Game.Hero = AddLowEntity(World, &Game.WorldAllocator, EntityType_Hero, TestHeroPosition);
 
 	real32 DeltaTime = TargetSecondsForFrame;
 	real32 LastFrame = (real32)glfwGetTime();
@@ -247,28 +181,29 @@ int main(void)
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		// SoundEngine.Update(Camera->Position, Camera->Front);
-		ProcessInput(&Game, DeltaTime);
+		ProcessInput(&Game.Input, Camera, &Game.HeroControl, DeltaTime);
 
-		world_position Origin = Camera->Position;
+		world_position Origin = Game.Hero->P;
 		rect3 Bounds;
 		Bounds.Min = V3(-60.0f, -2.0f, -60.0f);
 		Bounds.Max = V3(60.0f, 60.0f, 60.0f);
 		temporary_memory TempSimMemory = BeginTemporaryMemory(&Game.TranAllocator);
-		sim_region *SimRegion = BeginSimulation(&Game.TranAllocator, &Game.WorldAllocator, &Game.World, Origin, Bounds);
+		sim_region *SimRegion = BeginSimulation(&Game.TranAllocator, &Game.WorldAllocator, World, Origin, Bounds);
 
-		SetupChunks(Game.JobSystem, &Game.World, &Game.WorldAllocator, &Game.TranAllocator, Game.WorldAllocatorSemaphore);
-		LoadChunks(&Game.World);
+		SetupChunks(Game.JobSystem, World, &Game.WorldAllocator, &Game.TranAllocator, Game.WorldAllocatorSemaphore);
+		LoadChunks(World);
+
+		UpdateCameraOffsetFromHero(Camera);
 
 		TestShader.Enable();
-		mat4 ViewRotation = RotationMatrixFromDirectionVector(Camera->Front);
-		RenderChunks(&Game.World, TestShader.ID, &ViewRotation, &Projection);
+		mat4 ViewRotation = RotationMatrixFromDirectionVector(Normalize(-Camera->OffsetFromHero));
+		RenderChunks(World, TestShader.ID, &ViewRotation, &Projection, -Camera->OffsetFromHero);
 
-		RenderEntities(World, SimRegion, TestShader.ID, &ViewRotation, &TestModel);
+		std::cout << DeltaTime << std::endl;
+		UpdateAndRenderEntities(World, SimRegion, Game.Assets, &Game.HeroControl, DeltaTime, TestShader.ID, &ViewRotation, -Camera->OffsetFromHero);
 
-		EndSimulation(&Game.World);
+		EndSimulation(SimRegion, World, &Game.WorldAllocator);
 		EndTemporaryMemory(TempSimMemory);
-
-		std::cout << Camera->Position.ChunkX << " " << Camera->Position.ChunkY << " " << Camera->Position.ChunkZ << std::endl;
 
 		DeltaTime = (real32)glfwGetTime() - LastFrame;
 		// TODO(george): Implement sleeping instead of busy waiting

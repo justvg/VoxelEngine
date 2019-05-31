@@ -110,6 +110,7 @@ struct world_chunk
 	GLuint VAO, VBO;
 
 	v3 Translation;
+	real32 LengthSquaredToOrigin;
 
 	world_entity_block FirstBlock;
 
@@ -137,7 +138,10 @@ enum entity_type
 {
 	EntityType_Null,
 
-	EntityType_Tree
+	EntityType_Hero,
+	EntityType_Tree,
+
+	EntityType_Count
 };
 
 struct sim_entity
@@ -145,7 +149,9 @@ struct sim_entity
 	uint32 StorageIndex;
 	entity_type Type;
 	bool32 Updatable;
+
 	v3 P;
+	v3 dP;
 };
 
 struct low_entity
@@ -280,12 +286,13 @@ InitializeWorld(world *World)
 inline bool32
 AreInTheSameChunk(world *World, world_position *A, world_position *B)
 {
-	Assert(A->Offset.x < World->ChunkDimInMeters);
-	Assert(A->Offset.y < World->ChunkDimInMeters);
-	Assert(A->Offset.z < World->ChunkDimInMeters);
-	Assert(B->Offset.x < World->ChunkDimInMeters);
-	Assert(B->Offset.y < World->ChunkDimInMeters);
-	Assert(B->Offset.z < World->ChunkDimInMeters);
+	real32 Epsilon = 0.001f;
+	Assert(A->Offset.x < World->ChunkDimInMeters + Epsilon);
+	Assert(A->Offset.y < World->ChunkDimInMeters + Epsilon);
+	Assert(A->Offset.z < World->ChunkDimInMeters + Epsilon);
+	Assert(B->Offset.x < World->ChunkDimInMeters + Epsilon);
+	Assert(B->Offset.y < World->ChunkDimInMeters + Epsilon);
+	Assert(B->Offset.z < World->ChunkDimInMeters + Epsilon);
 
 	bool32 Result = ((A->ChunkX == B->ChunkX) &&
 					 (A->ChunkY == B->ChunkY) &&
@@ -542,12 +549,96 @@ LoadChunks(world *World)
 	}
 }
 
-internal void
-RenderChunks(world *World, GLuint Shader, mat4 *ViewRotation, mat4 *Projection)
+internal world_chunk *
+SortedMerge(world_chunk *A, world_chunk *B)
 {
+	world_chunk Temp;
+
+	world_chunk *Tail = &Temp;
+	Temp.NextChunk = 0;
+	while(1)
+	{
+		if(A == 0)
+		{
+			Tail->NextChunk = B;
+			break;
+		}
+		else if(B == 0)
+		{
+			Tail->NextChunk = A;
+			break;
+		}
+		if(A->LengthSquaredToOrigin <= B->LengthSquaredToOrigin)
+		{
+			world_chunk *NewNode = A;
+			A = A->NextChunk;
+			NewNode->NextChunk = Tail->NextChunk; 
+			Tail->NextChunk = NewNode;
+		}
+		else
+		{
+			world_chunk *NewNode = B;
+			B = B->NextChunk;
+			NewNode->NextChunk = Tail->NextChunk; 
+			Tail->NextChunk = NewNode;
+		}
+
+		Tail = Tail->NextChunk;
+	}
+
+	return(Temp.NextChunk);
+}
+
+internal void
+SplitLinkedList(world_chunk *Source, world_chunk **A, world_chunk **B)
+{
+	world_chunk *Fast, *Slow;
+	Slow = Source;
+	Fast = Source->NextChunk;
+
+	while(Fast != 0)
+	{
+		Fast = Fast->NextChunk;
+		if(Fast != 0)
+		{
+			Slow = Slow->NextChunk;
+			Fast = Fast->NextChunk;
+		}
+	}
+
+	*A = Source;
+	*B = Slow->NextChunk;
+	Slow->NextChunk = 0;
+}
+
+internal void
+MergeSort(world_chunk **Node)
+{
+	world_chunk *Head = *Node;
+	world_chunk *A;
+	world_chunk *B;
+
+	if((Head == 0) || (Head->NextChunk == 0))
+	{
+		return;
+	}
+
+	SplitLinkedList(Head, &A, &B);
+
+	MergeSort(&A);
+	MergeSort(&B);
+
+	*Node = SortedMerge(A, B);
+}
+
+internal void
+RenderChunks(world *World, GLuint Shader, mat4 *ViewRotation, mat4 *Projection, v3 CameraOffsetFromHero)
+{
+	MergeSort(&World->ChunksRenderList);
 	for(world_chunk *Chunk = World->ChunksRenderList; Chunk; Chunk = Chunk->NextChunk)
 	{
-		mat4 TranslationMatrix = Translation(Chunk->Translation);
+		v3 Translate = Chunk->Translation + CameraOffsetFromHero;
+		mat4 TranslationMatrix = Translation(Translate);
 		mat4 Matrix = *ViewRotation * TranslationMatrix;
 		
 		mat4 MVP = *Projection * Matrix * Identity(1.0f);

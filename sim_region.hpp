@@ -69,6 +69,7 @@ BeginSimulation(stack_allocator *Allocator, stack_allocator *WorldAllocator, wor
 							*ChunkToRender = *Chunk;
 							world_position ChunkPosition = {ChunkX, ChunkY, ChunkZ, V3(0.0f, 0.0f, 0.0f)};
 							ChunkToRender->Translation = Substract(World, &ChunkPosition, &SimRegion->Origin);
+							ChunkToRender->LengthSquaredToOrigin = LengthSq(ChunkToRender->Translation);
 							ChunkToRender->NextChunk = World->ChunksRenderList;
 							World->ChunksRenderList = ChunkToRender;
 						}
@@ -110,30 +111,169 @@ BeginSimulation(stack_allocator *Allocator, stack_allocator *WorldAllocator, wor
 }
 
 internal void
-EndSimulation(world *World)
+EndSimulation(sim_region *SimRegion, world *World, stack_allocator *WorldAllocator)
 {
 	World->ChunksSetupList = 0;
 	World->ChunksLoadList = 0;
 	World->ChunksRenderList = 0;
+
+	for(uint32 EntityIndex = 0; EntityIndex < SimRegion->EntityCount; EntityIndex++)
+	{
+		sim_entity *Entity = SimRegion->Entities + EntityIndex;
+		low_entity *LowEntity = World->LowEntities + Entity->StorageIndex;
+
+		LowEntity->Sim = *Entity;
+
+		world_position NewP = MapIntoChunkSpace(World, SimRegion->Origin, Entity->P);
+		ChangeEntityLocation(World, WorldAllocator, Entity->StorageIndex, LowEntity, NewP);
+	}
 }
 
-struct test_model
+struct mesh
 {
 	GLuint VAO, VBO;
-	real32 VertexBuffer[36];
+	uint32 VerticesCount;
 };
+
+struct mesh_load_info
+{
+	char *Filename;
+};
+
+struct graphics_assets
+{
+	stack_allocator AssetsAllocator;
+
+	mesh *EntityModels[EntityType_Count];
+	mesh_load_info Infos[EntityType_Count];
+};
+
+internal graphics_assets *
+InitializeGameAssets(stack_allocator *Allocator, memory_size Size)
+{
+	graphics_assets *Assets = PushStruct(Allocator, graphics_assets);
+	SubMemory(&Assets->AssetsAllocator, Allocator, Size);
+
+	Assets->Infos[EntityType_Hero].Filename = "";
+	Assets->Infos[EntityType_Tree].Filename = "";
+
+	return(Assets);
+}
+
 internal void
-RenderEntities(world *World, sim_region *SimRegion, GLuint Shader, mat4 *ViewRotation, test_model *TestModel)
+LoadAsset(graphics_assets *Assets, entity_type Type)
+{
+	Assets->EntityModels[Type] = PushStruct(&Assets->AssetsAllocator, mesh);
+
+// TODO(georgy): Implement asset loader!
+#if 0
+	LoadMesh(Assets, Type, Assets->Infos[Type].Filename);
+#else
+	switch(Type)
+	{
+		case EntityType_Hero:
+		{
+			real32 TestCubeVertices[] = {
+				// Positions          
+				0.5f, -0.5f, -0.5f,  
+				-0.5f, -0.5f, -0.5f,  
+				0.5f,  0.5f, -0.5f,  
+				-0.5f,  0.5f, -0.5f,  
+				0.5f,  0.5f, -0.5f,  
+				-0.5f, -0.5f, -0.5f,  
+
+				-0.5f, -0.5f,  0.5f,
+				0.5f, -0.5f,  0.5f,
+				0.5f,  0.5f,  0.5f,
+				0.5f,  0.5f,  0.5f,
+				-0.5f,  0.5f,  0.5f,
+				-0.5f, -0.5f,  0.5f,
+
+				-0.5f,  0.5f,  0.5f,
+				-0.5f,  0.5f, -0.5f,
+				-0.5f, -0.5f, -0.5f,
+				-0.5f, -0.5f, -0.5f,
+				-0.5f, -0.5f,  0.5f,
+				-0.5f,  0.5f,  0.5f, 
+
+				0.5f,  0.5f, -0.5f,  
+				0.5f,  0.5f,  0.5f,  
+				0.5f, -0.5f, -0.5f,  
+				0.5f, -0.5f,  0.5f,  
+				0.5f, -0.5f, -0.5f,  
+				0.5f,  0.5f,  0.5f,  
+
+				-0.5f, -0.5f, -0.5f,  
+				0.5f, -0.5f, -0.5f,  
+				0.5f, -0.5f,  0.5f,  
+				0.5f, -0.5f,  0.5f,  
+				-0.5f, -0.5f,  0.5f,  
+				-0.5f, -0.5f, -0.5f,  
+
+				0.5f,  0.5f, -0.5f,  
+				-0.5f,  0.5f, -0.5f,  
+				0.5f,  0.5f,  0.5f,  
+				-0.5f,  0.5f,  0.5f,  
+				0.5f,  0.5f,  0.5f,  
+				-0.5f,  0.5f, -0.5f
+			};
+			glGenVertexArrays(1, &Assets->EntityModels[Type]->VAO);
+			glGenBuffers(1,&Assets->EntityModels[Type]->VBO);
+			glBindVertexArray(Assets->EntityModels[Type]->VAO);
+			glBindBuffer(GL_ARRAY_BUFFER, Assets->EntityModels[Type]->VBO);
+			glBufferData(GL_ARRAY_BUFFER, sizeof(TestCubeVertices), TestCubeVertices, GL_STATIC_DRAW);
+			glEnableVertexAttribArray(0);
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void *)0);
+			glBindVertexArray(0);
+
+			Assets->EntityModels[Type]->VerticesCount = sizeof(TestCubeVertices);
+		} break;
+	}
+#endif
+}
+
+internal void
+MoveEntity(sim_entity *Entity, real32 DeltaTime, v3 ddP, real32 Speed)
+{
+	ddP *= Speed;
+	ddP += -1.5f*Entity->dP;
+	Entity->P = (0.5f*ddP*DeltaTime*DeltaTime) + (Entity->dP*DeltaTime) + Entity->P;
+	Entity->dP = ddP*DeltaTime + Entity->dP;
+}
+
+internal void
+UpdateAndRenderEntities(world *World, sim_region *SimRegion, graphics_assets *Assets, hero_control *Hero, 
+						real32 DeltaTime, GLuint Shader, mat4 *ViewRotation, v3 CameraOffsetFromHero)
 {
 	for(uint32 EntityIndex = 0; EntityIndex < SimRegion->EntityCount; EntityIndex++)
 	{
 		sim_entity *Entity = SimRegion->Entities + EntityIndex;	
 
-		mat4 TranslationMatrix = Translation(Entity->P);
-		mat4 Matrix = *ViewRotation * TranslationMatrix;
+		if(Entity->Updatable)
+		{
+			switch(Entity->Type)
+			{
+				case EntityType_Hero:
+				{
+					v3 ddP = Hero->ddP;
+					MoveEntity(Entity, DeltaTime, ddP, 10.0f);
+				};
+			}
+
+			if(Assets->EntityModels[Entity->Type])
+			{
+				v3 Translate = Entity->P + CameraOffsetFromHero;
+				mat4 TranslationMatrix = Translation(Translate);
+				mat4 Matrix = *ViewRotation * TranslationMatrix;
 			
-		glUniformMatrix4fv(glGetUniformLocation(Shader, "View"), 1, GL_FALSE, Matrix.Elements);
-		glBindVertexArray(TestModel->VAO);
-		glDrawArrays(GL_TRIANGLES, 0, 36);
+				glUniformMatrix4fv(glGetUniformLocation(Shader, "View"), 1, GL_FALSE, Matrix.Elements);
+				glBindVertexArray(Assets->EntityModels[Entity->Type]->VAO);
+				glDrawArrays(GL_TRIANGLES, 0, Assets->EntityModels[Entity->Type]->VerticesCount);
+			}
+			else
+			{
+				LoadAsset(Assets, Entity->Type);
+			}
+		}
 	}
 } 

@@ -123,9 +123,23 @@ EndTemporaryMemory(temporary_memory TempMem)
 	Allocator->Used = TempMem.Used;
 }
 
+inline void
+SubMemory(stack_allocator *Result, stack_allocator *Allocator, memory_size Size)
+{
+	Result->Size = Size;
+	Result->Base = (uint8 *)PushSize(Allocator, Size);
+	Result->Used = 0;
+}
+
 #include "job_system.hpp"
 #include <math.h>
 #include "vec.hpp"
+
+struct hero_control
+{
+	v3 ddP;
+};
+
 #include "maths.hpp"
 #include "mat.hpp"
 #include "shader.hpp"
@@ -133,7 +147,7 @@ EndTemporaryMemory(temporary_memory TempMem)
 #include "world.hpp"
 #include "sim_region.hpp"
 
-internal void 
+internal low_entity * 
 AddLowEntity(world *World, stack_allocator *WorldAllocator, entity_type Type, world_position P)
 {
 	Assert(World->LowEntityCount < ArrayCount(World->LowEntities));
@@ -146,19 +160,30 @@ AddLowEntity(world *World, stack_allocator *WorldAllocator, entity_type Type, wo
 	LowEntity->P = InvalidPosition();
 
 	ChangeEntityLocation(World, WorldAllocator, EntityIndex, LowEntity, P);
+
+	return(LowEntity);
 }
 
 struct camera
 {
-	world_position Position;
-	v3 Front;
-
+	real32 DistanceFromHero;
 	real32 Pitch;
 	real32 Head;
 
-	real32 MoveSpeed;
 	real32 RotSensetivity;
+
+	v3 OffsetFromHero;
 };
+
+inline void
+UpdateCameraOffsetFromHero(camera *Camera)
+{
+	real32 VerticalDistance = Camera->DistanceFromHero * sinf(-Camera->Pitch / 180.0f * M_PI);
+	real32 HorizontalDistance = Camera->DistanceFromHero * cosf(-Camera->Pitch / 180.0f * M_PI);
+	real32 XOffsetFromHero = HorizontalDistance * sinf(-Camera->Head / 180.0f * M_PI);
+	real32 ZOffsetFromHero = HorizontalDistance * cosf(-Camera->Head / 180.0f * M_PI);
+	Camera->OffsetFromHero = V3(XOffsetFromHero, VerticalDistance, ZOffsetFromHero);
+}
 
 struct game
 {
@@ -172,7 +197,11 @@ struct game
 	stack_allocator TranAllocator;
 
 	world World;
+	graphics_assets *Assets;
 
 	camera Camera;	
+
+	low_entity *Hero;
+	hero_control HeroControl;
 };
 
