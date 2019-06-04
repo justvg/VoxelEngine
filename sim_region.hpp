@@ -84,7 +84,7 @@ BeginSimulation(stack_allocator *Allocator, stack_allocator *WorldAllocator, wor
 								uint32 LowEntityIndex = Block->LowEntityIndex[EntityIndexInBlock];
 								low_entity *LowEntity = World->LowEntities + LowEntityIndex;
 								v3 SimSpaceP = Substract(World, &LowEntity->P, &SimRegion->Origin);
-								// TODO(georgy): Change this test to testing entity volume and sim bounds, not a point and sim bounds!
+								// TODO(georgy): Change this test to testing entity volume and sim bound, not a point and sim bound!
 								if(IsInRect(SimRegion->Bounds, SimSpaceP))
 								{
 									if(SimRegion->EntityCount < SimRegion->MaxEntityCount)
@@ -129,45 +129,13 @@ EndSimulation(sim_region *SimRegion, world *World, stack_allocator *WorldAllocat
 	}
 }
 
-struct mesh
-{
-	GLuint VAO, VBO;
-	uint32 VerticesCount;
-};
-
-struct mesh_load_info
-{
-	char *Filename;
-};
-
-struct graphics_assets
-{
-	stack_allocator AssetsAllocator;
-
-	mesh *EntityModels[EntityType_Count];
-	mesh_load_info Infos[EntityType_Count];
-};
-
-internal graphics_assets *
-InitializeGameAssets(stack_allocator *Allocator, memory_size Size)
-{
-	graphics_assets *Assets = PushStruct(Allocator, graphics_assets);
-	SubMemory(&Assets->AssetsAllocator, Allocator, Size);
-
-	Assets->Infos[EntityType_Hero].Filename = "";
-	Assets->Infos[EntityType_Tree].Filename = "";
-
-	return(Assets);
-}
-
 internal void
 LoadAsset(graphics_assets *Assets, entity_type Type)
 {
 	Assets->EntityModels[Type] = PushStruct(&Assets->AssetsAllocator, mesh);
 
-// TODO(georgy): Implement asset loader!
-#if 0
-	LoadMesh(Assets, Type, Assets->Infos[Type].Filename);
+#if 1
+	LoadQubicleBinary(Assets->EntityModels[Type], Assets->Infos[Type].Filename);
 #else
 	switch(Type)
 	{
@@ -233,16 +201,23 @@ LoadAsset(graphics_assets *Assets, entity_type Type)
 }
 
 internal void
-MoveEntity(sim_entity *Entity, real32 DeltaTime, v3 ddP, real32 Speed)
+MoveEntity(sim_region *SimRegion, sim_entity *Entity, real32 DeltaTime, v3 ddP, real32 Speed)
 {
+	real32 ddPLength = LengthSq(ddP);
+	if(ddPLength > 1.0f)
+	{
+		ddP *= 1.0f / sqrtf(ddPLength); 
+	}
 	ddP *= Speed;
-	ddP += -1.5f*Entity->dP;
-	Entity->P = (0.5f*ddP*DeltaTime*DeltaTime) + (Entity->dP*DeltaTime) + Entity->P;
-	Entity->dP = ddP*DeltaTime + Entity->dP;
+	v3 Drag = -1.5f*Entity->dP;
+	ddP += Drag;
+
+	Entity->P += (0.5f*ddP*DeltaTime*DeltaTime) + (Entity->dP*DeltaTime);
+	Entity->dP += ddP*DeltaTime;
 }
 
 internal void
-UpdateAndRenderEntities(world *World, sim_region *SimRegion, graphics_assets *Assets, hero_control *Hero, 
+UpdateAndRenderEntities(sim_region *SimRegion, graphics_assets *Assets, hero_control *Hero, 
 						real32 DeltaTime, GLuint Shader, mat4 *ViewRotation, v3 CameraOffsetFromHero)
 {
 	for(uint32 EntityIndex = 0; EntityIndex < SimRegion->EntityCount; EntityIndex++)
@@ -256,17 +231,31 @@ UpdateAndRenderEntities(world *World, sim_region *SimRegion, graphics_assets *As
 				case EntityType_Hero:
 				{
 					v3 ddP = Hero->ddP;
-					MoveEntity(Entity, DeltaTime, ddP, 10.0f);
-				};
+					MoveEntity(SimRegion, Entity, DeltaTime, ddP, 10.0f);
+				} break;
 			}
 
 			if(Assets->EntityModels[Entity->Type])
 			{
+				mat4 ModelMatrix = Identity(1.0f);
+				switch(Entity->Type)
+				{
+					case EntityType_Hero:
+					{
+						ModelMatrix = Scale(0.1f);
+					} break;
+					case EntityType_Tree:
+					{
+						ModelMatrix = Translation(V3(0.0f, 1.3f, 0.0f));
+						ModelMatrix = ModelMatrix * Scale(0.35f);
+					} break;
+				}
+				
 				v3 Translate = Entity->P + CameraOffsetFromHero;
 				mat4 TranslationMatrix = Translation(Translate);
-				mat4 Matrix = *ViewRotation * TranslationMatrix;
-			
-				glUniformMatrix4fv(glGetUniformLocation(Shader, "View"), 1, GL_FALSE, Matrix.Elements);
+				mat4 ViewMatrix = *ViewRotation * TranslationMatrix;
+				glUniformMatrix4fv(glGetUniformLocation(Shader, "Model"), 1, GL_FALSE, ModelMatrix.Elements);
+				glUniformMatrix4fv(glGetUniformLocation(Shader, "View"), 1, GL_FALSE, ViewMatrix.Elements);
 				glBindVertexArray(Assets->EntityModels[Entity->Type]->VAO);
 				glDrawArrays(GL_TRIANGLES, 0, Assets->EntityModels[Entity->Type]->VerticesCount);
 			}

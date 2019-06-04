@@ -36,6 +36,9 @@ typedef size_t memory_size;
 #define Megabytes(Value) (Kilobytes(Value) * 1024LL)
 #define Gigabytes(Value) (Megabytes(Value) * 1024LL)
 
+#define Minimum(A, B) ((A < B) ? A : B)
+#define Maximum(A, B) ((A > B) ? A : B)
+
 #define M_PI 3.14159265359f
 
 struct game_input
@@ -143,6 +146,7 @@ struct hero_control
 #include "maths.hpp"
 #include "mat.hpp"
 #include "shader.hpp"
+#include "qubicle_binary_loader.hpp"
 #include "sound_manager.hpp"
 #include "world.hpp"
 #include "sim_region.hpp"

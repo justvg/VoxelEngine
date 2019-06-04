@@ -75,7 +75,7 @@ ProcessInput(game_input *Input, camera *Camera, hero_control *Hero, real32 Delta
 	Camera->Pitch = Camera->Pitch > 89.0f ? 89.0f : Camera->Pitch;
 	Camera->Pitch = Camera->Pitch < -89.0f ? -89.0f : Camera->Pitch;
 
-	v3 HeroMovementDirection = Normalize(V3(-Camera->OffsetFromHero.x, 0.0f, -Camera->OffsetFromHero.z));
+	v3 HeroMovementDirection = Normalize(V3(-Camera->OffsetFromHero.x, -Camera->OffsetFromHero.y, -Camera->OffsetFromHero.z));
 	v3 CameraUp = {0.0f, 1.0f, 0.0f};
 	Hero->ddP = {};
 	if(Input->MoveForward)
@@ -171,7 +171,7 @@ int main(void)
 	mat4 Projection = Perspective(45.0f, (real32)Width / (real32)Height, 0.1f, 100.0f);
 	glUniformMatrix4fv(glGetUniformLocation(TestShader.ID, "Projection"), 1, GL_FALSE, Projection.Elements);
 
-	world_position TestHeroPosition = {10004, 1, 10000, V3(0.0f, 0.0f, 0.0f)};
+	world_position TestHeroPosition = {10004, 1, 10002, V3(0.0f, 0.0f, 0.0f)};
 	Game.Hero = AddLowEntity(World, &Game.WorldAllocator, EntityType_Hero, TestHeroPosition);
 
 	real32 DeltaTime = TargetSecondsForFrame;
@@ -185,7 +185,7 @@ int main(void)
 
 		world_position Origin = Game.Hero->P;
 		rect3 Bounds;
-		Bounds.Min = V3(-60.0f, -2.0f, -60.0f);
+		Bounds.Min = V3(-60.0f, -30.0f, -60.0f);
 		Bounds.Max = V3(60.0f, 60.0f, 60.0f);
 		temporary_memory TempSimMemory = BeginTemporaryMemory(&Game.TranAllocator);
 		sim_region *SimRegion = BeginSimulation(&Game.TranAllocator, &Game.WorldAllocator, World, Origin, Bounds);
@@ -199,8 +199,7 @@ int main(void)
 		mat4 ViewRotation = RotationMatrixFromDirectionVector(Normalize(-Camera->OffsetFromHero));
 		RenderChunks(World, TestShader.ID, &ViewRotation, &Projection, -Camera->OffsetFromHero);
 
-		std::cout << DeltaTime << std::endl;
-		UpdateAndRenderEntities(World, SimRegion, Game.Assets, &Game.HeroControl, DeltaTime, TestShader.ID, &ViewRotation, -Camera->OffsetFromHero);
+		UpdateAndRenderEntities(SimRegion, Game.Assets, &Game.HeroControl, DeltaTime, TestShader.ID, &ViewRotation, -Camera->OffsetFromHero);
 
 		EndSimulation(SimRegion, World, &Game.WorldAllocator);
 		EndTemporaryMemory(TempSimMemory);
@@ -215,7 +214,7 @@ int main(void)
 #endif
 		LastFrame = (real32)glfwGetTime();
 
-		// std::cout << DeltaTime << std::endl;
+		std::cout << DeltaTime << std::endl;
 
 		glfwPollEvents();
 		glfwSwapBuffers(Window);

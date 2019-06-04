@@ -1,0 +1,298 @@
+#pragma once
+
+enum entity_type
+{
+	EntityType_Null,
+
+	EntityType_Hero,
+	EntityType_Tree,
+
+	EntityType_Count
+};
+
+struct mesh
+{
+	GLuint VAO, VBO;
+	uint32 VerticesCount;
+};
+
+struct mesh_load_info
+{
+	char *Filename;
+};
+
+struct graphics_assets
+{
+	stack_allocator AssetsAllocator;
+
+	mesh *EntityModels[EntityType_Count];
+	mesh_load_info Infos[EntityType_Count];
+};
+
+internal graphics_assets *
+InitializeGameAssets(stack_allocator *Allocator, memory_size Size)
+{
+	graphics_assets *Assets = PushStruct(Allocator, graphics_assets);
+	SubMemory(&Assets->AssetsAllocator, Allocator, Size);
+
+	Assets->Infos[EntityType_Hero].Filename = "data/models/Knight.qb";
+	Assets->Infos[EntityType_Tree].Filename = "data/models/tree1.qb";
+
+	return(Assets);
+}
+
+struct qb_header
+{
+	uint32 Version;
+	uint32 ColorFormat;
+	uint32 Handedness;
+	uint32 Compression;
+	uint32 VisibilityMask;
+	uint32 MatrixCount;
+};
+
+struct qb_matrix
+{
+	uint8 NameLength;
+	char *Name;
+	uint32 SizeX, SizeY, SizeZ;
+	int32 PosX, PosY, PosZ;
+};
+
+struct qb_vertex
+{
+	v3 Pos;
+	v3 Normal;
+	v3 Color;
+};
+
+internal void
+AddQuad(std::vector<qb_vertex> &VertexBuffer, qb_vertex *A, qb_vertex *B, qb_vertex *C, qb_vertex *D)
+{
+	VertexBuffer.push_back(*A);
+	VertexBuffer.push_back(*B);
+	VertexBuffer.push_back(*C);
+	VertexBuffer.push_back(*C);
+	VertexBuffer.push_back(*B);
+	VertexBuffer.push_back(*D);
+}
+
+internal v3
+GetRGBColorFromUInt32(uint32 Color)
+{
+	v3 Result;
+
+	uint32 r = (Color & 0x000000FF);
+	uint32 g = (Color & 0x0000FF00) >> 8;
+	uint32 b = (Color & 0x00FF0000) >> 16;
+
+	Result.r = (r / 255.0f);
+	Result.g = (g / 255.0f);
+	Result.b = (b / 255.0f);
+
+	return(Result);
+}
+
+inline uint32
+ReadColorQB(uint32 ColorQB, uint32 ColorFormat)
+{
+	uint32 Result;
+	if(ColorFormat == 0)
+	{
+		Result = ColorQB;
+	}
+	else
+	{
+		Result = ((ColorQB & 0x00FF0000) >> 16) |
+				 ((ColorQB & 0x0000FF00)) |
+				 ((ColorQB & 0x000000FF) << 16);
+	}
+
+	return(Result);
+}
+
+// TODO(georgy): Use visibility mask to merge some faces
+internal void
+SetVoxel(std::vector<qb_vertex> &VertexBuffer, uint32 XI, uint32 YI, uint32 ZI, real32 BlockDimInMeters, uint32 ColorUInt32, v3 ModelDimensions)
+{
+	real32 X = BlockDimInMeters*((real32)XI) - 0.5f*ModelDimensions.x*BlockDimInMeters;
+	real32 Y = BlockDimInMeters*((real32)YI) - 0.5f*ModelDimensions.y*BlockDimInMeters;
+	real32 Z = BlockDimInMeters*((real32)ZI) - 0.5f*ModelDimensions.z*BlockDimInMeters;
+	qb_vertex A, B, C, D;
+
+	v3 Color = GetRGBColorFromUInt32(ColorUInt32);
+	A.Color = B.Color = C.Color = D.Color = Color;
+
+	{
+		A.Pos = V3(X, Y, Z);
+		B.Pos = V3(X, Y, Z + BlockDimInMeters);
+		C.Pos = V3(X, Y + BlockDimInMeters, Z);
+		D.Pos = V3(X, Y + BlockDimInMeters, Z + BlockDimInMeters);
+		A.Normal = B.Normal = C.Normal = D.Normal = V3(-1.0f, 0.0f, 0.0f);
+		AddQuad(VertexBuffer, &A, &B, &C, &D);
+	}
+
+	{
+		A.Pos = V3(X + BlockDimInMeters, Y, Z);
+		B.Pos = V3(X + BlockDimInMeters, Y + BlockDimInMeters, Z);
+		C.Pos = V3(X + BlockDimInMeters, Y, Z + BlockDimInMeters);
+		D.Pos = V3(X + BlockDimInMeters, Y + BlockDimInMeters, Z + BlockDimInMeters);
+		A.Normal = B.Normal = C.Normal = D.Normal = V3(1.0f, 0.0f, 0.0f);
+		AddQuad(VertexBuffer, &A, &B, &C, &D);
+	}
+
+	{
+		A.Pos = V3(X, Y, Z);
+		B.Pos = V3(X, Y + BlockDimInMeters, Z);
+		C.Pos = V3(X + BlockDimInMeters, Y, Z);
+		D.Pos = V3(X + BlockDimInMeters, Y + BlockDimInMeters, Z);
+		A.Normal = B.Normal = C.Normal = D.Normal = V3(0.0f, 0.0f, -1.0f);
+		AddQuad(VertexBuffer, &A, &B, &C, &D);
+	}
+
+	{
+		A.Pos = V3(X, Y, Z + BlockDimInMeters);
+		B.Pos = V3(X + BlockDimInMeters, Y, Z + BlockDimInMeters);
+		C.Pos = V3(X, Y + BlockDimInMeters, Z + BlockDimInMeters);
+		D.Pos = V3(X + BlockDimInMeters, Y + BlockDimInMeters, Z + BlockDimInMeters);
+		A.Normal = B.Normal = C.Normal = D.Normal = V3(0.0f, 0.0f, 1.0f);
+		AddQuad(VertexBuffer, &A, &B, &C, &D);
+	}
+
+	{
+		A.Pos = V3(X, Y, Z);
+		B.Pos = V3(X + BlockDimInMeters, Y, Z);
+		C.Pos = V3(X, Y, Z + BlockDimInMeters);
+		D.Pos = V3(X + BlockDimInMeters, Y, Z + BlockDimInMeters);
+		A.Normal = B.Normal = C.Normal = D.Normal = V3(0.0f, -1.0f, 0.0f);
+		AddQuad(VertexBuffer, &A, &B, &C, &D);
+	}
+
+	{
+		A.Pos = V3(X, Y + BlockDimInMeters, Z);
+		B.Pos = V3(X, Y + BlockDimInMeters, Z + BlockDimInMeters);
+		C.Pos = V3(X + BlockDimInMeters, Y + BlockDimInMeters, Z);
+		D.Pos = V3(X + BlockDimInMeters, Y + BlockDimInMeters, Z + BlockDimInMeters);
+		A.Normal = B.Normal = C.Normal = D.Normal = V3(0.0f, 1.0f, 0.0f);
+		AddQuad(VertexBuffer, &A, &B, &C, &D);
+	}
+}
+
+#define CODEFLAG 2
+#define NEXTSLICEFLAG 6
+
+internal void
+LoadQubicleBinary(mesh *Mesh, char *Filename)
+{
+	std::vector<qb_vertex> VertexBuffer;
+
+	uint8 *DataPointer = (uint8 *)ReadEntireFile(Filename);
+	qb_header *Header = (qb_header *)DataPointer;
+	DataPointer += sizeof(qb_header);
+	for(uint32 I = 0; I < Header->MatrixCount; I++)
+	{
+		qb_matrix MatrixData;
+		MatrixData.NameLength = *DataPointer;
+		DataPointer++;
+		MatrixData.Name = (char *)DataPointer;
+		DataPointer += MatrixData.NameLength;
+		MatrixData.SizeX = *(uint32 *)DataPointer;
+		DataPointer += sizeof(uint32);
+		MatrixData.SizeY = *(uint32 *)DataPointer;
+		DataPointer += sizeof(uint32);
+		MatrixData.SizeZ = *(uint32 *)DataPointer;
+		DataPointer += sizeof(uint32);
+		MatrixData.PosX = *(int32 *)DataPointer;
+		DataPointer += sizeof(int32);
+		MatrixData.PosY = *(int32 *)DataPointer;
+		DataPointer += sizeof(int32);
+		MatrixData.PosZ = *(int32 *)DataPointer;
+		DataPointer += sizeof(int32);
+
+		uint32 Data;
+		v3 ModelDimensions = V3(MatrixData.SizeX, MatrixData.SizeY, MatrixData.SizeZ);
+		if(Header->Compression == 0)
+		{
+			for(uint32 Z = 0; Z < MatrixData.SizeZ; Z++)
+			{
+				for(uint32 Y = 0; Y < MatrixData.SizeY; Y++)
+				{
+					for(uint32 X = 0; X < MatrixData.SizeX; X++)
+					{
+						Data = *(uint32 *)DataPointer;	
+						DataPointer += sizeof(uint32);
+
+						if(Data & 0xFF000000)
+						{
+							uint32 Color = ReadColorQB(Data, Header->ColorFormat);
+							SetVoxel(VertexBuffer, X, Y, Z, 0.5f, Color, ModelDimensions);
+						}
+					}	
+				}
+			}
+		}
+		else
+		{
+			for(uint32 Z = 0; Z < MatrixData.SizeZ; Z++)
+			{
+				uint32 Index = 0;
+				while(true)
+				{
+					Data = *(uint32 *)DataPointer;	
+					DataPointer += sizeof(uint32);
+
+					if(Data == NEXTSLICEFLAG)
+					{
+						break;
+					}
+					else if(Data == CODEFLAG)
+					{
+						uint32 Count = *(uint32 *)DataPointer;	
+						DataPointer += sizeof(uint32);
+						Data = *(uint32 *)DataPointer;	
+						DataPointer += sizeof(uint32);
+
+						for(uint32 J = 0; J < Count; J++)
+						{
+							uint32 X = Index % MatrixData.SizeX;
+							uint32 Y = Index / MatrixData.SizeX;
+							Index++;
+							
+							if(Data & 0xFF000000)
+							{
+								uint32 Color = ReadColorQB(Data, Header->ColorFormat);
+								SetVoxel(VertexBuffer, X, Y, Z, 0.5f, Color, ModelDimensions);
+							}
+						}
+					}
+					else
+					{
+						uint32 X = Index % MatrixData.SizeX;
+						uint32 Y = Index / MatrixData.SizeX;
+						Index++;
+
+						if(Data & 0xFF000000)
+						{
+							uint32 Color = ReadColorQB(Data, Header->ColorFormat);
+							SetVoxel(VertexBuffer, X, Y, Z, 0.5f, Color, ModelDimensions);
+						}
+					}
+				}
+			}
+		}
+	}
+
+	Mesh->VerticesCount = (uint32)VertexBuffer.size();
+	glGenVertexArrays(1, &Mesh->VAO);
+	glGenBuffers(1, &Mesh->VBO);
+	glBindVertexArray(Mesh->VAO);
+	glBindBuffer(GL_ARRAY_BUFFER, Mesh->VBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(qb_vertex)*VertexBuffer.size(), &VertexBuffer[0], GL_STATIC_DRAW);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(qb_vertex), (void *)0);
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(qb_vertex), (void *)(sizeof(real32)*3));
+	glEnableVertexAttribArray(2);
+	glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(qb_vertex), (void *)(sizeof(real32)*6));
+	glBindVertexArray(0);
+}

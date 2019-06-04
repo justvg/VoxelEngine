@@ -134,16 +134,6 @@ struct ray_sample
 	occlusion_ray Rays[RAY_COUNT];	
 };
 
-enum entity_type
-{
-	EntityType_Null,
-
-	EntityType_Hero,
-	EntityType_Tree,
-
-	EntityType_Count
-};
-
 struct sim_entity
 {
 	uint32 StorageIndex;
@@ -316,22 +306,6 @@ GetUInt32Color(real32 r, real32 g, real32 b)
 					 ((uint32)(b * 255) << 16) |
 					 ((uint32)(g * 255) << 8)  |
 					 ((uint32)(r * 255)));
-
-	return(Result);
-}
-
-internal v3
-GetRGBColorFromUInt32(uint32 Color)
-{
-	v3 Result;
-
-	uint32 r = (Color & 0x000000FF);
-	uint32 g = (Color & 0x0000FF00) >> 8;
-	uint32 b = (Color & 0x00FF0000) >> 16;
-
-	Result.r = (r / 255.0f);
-	Result.g = (g / 255.0f);
-	Result.b = (b / 255.0f);
 
 	return(Result);
 }
@@ -637,13 +611,16 @@ RenderChunks(world *World, GLuint Shader, mat4 *ViewRotation, mat4 *Projection, 
 	MergeSort(&World->ChunksRenderList);
 	for(world_chunk *Chunk = World->ChunksRenderList; Chunk; Chunk = Chunk->NextChunk)
 	{
+		mat4 ModelMatrix = Identity(1.0f);
+
 		v3 Translate = Chunk->Translation + CameraOffsetFromHero;
 		mat4 TranslationMatrix = Translation(Translate);
 		mat4 Matrix = *ViewRotation * TranslationMatrix;
 		
-		mat4 MVP = *Projection * Matrix * Identity(1.0f);
+		mat4 MVP = *Projection * Matrix * ModelMatrix;
 		if(FrustumCulling(MVP, 0.0f, World->ChunkDimInMeters))
 		{
+			glUniformMatrix4fv(glGetUniformLocation(Shader, "Model"), 1, GL_FALSE, ModelMatrix.Elements);
 			glUniformMatrix4fv(glGetUniformLocation(Shader, "View"), 1, GL_FALSE, Matrix.Elements);
 			glBindVertexArray(Chunk->VAO);
 			glDrawArrays(GL_TRIANGLES, 0, (GLsizei)Chunk->VertexBuffer->size());
@@ -844,6 +821,27 @@ GenerateChunkVertices(world *World, world_chunk *Chunk, real32 BlockDimInMeters)
 	}
 }
 
+internal bool32
+CanAddTree(world_chunk *Chunk, uint32 X, uint32 Y, uint32 Z)
+{
+	bool32 Result = true;
+
+	Result = (Y >= 4) && (Y <= 10) && Result;
+	if (Result)
+	{
+		Result = GetVoxel(Chunk->Blocks, X, Y - 1, Z).Active && Result;
+		Result = !GetVoxel(Chunk->Blocks, X, Y + 1, Z).Active && Result;
+		Result = !GetVoxel(Chunk->Blocks, X, Y + 2, Z).Active && Result;
+		Result = !GetVoxel(Chunk->Blocks, X, Y + 3, Z).Active && Result;
+		Result = !GetVoxel(Chunk->Blocks, X, Y + 4, Z).Active && Result;
+		Result = !GetVoxel(Chunk->Blocks, X, Y + 5, Z).Active && Result;
+	}
+
+	return(Result);
+}
+
+internal low_entity * 
+AddLowEntity(world *World, stack_allocator *WorldAllocator, entity_type Type, world_position P);
 struct setup_chunk_data
 {
 	world *World;
@@ -886,7 +884,7 @@ SetupChunk(void *Data)
 				{
 					fY = (Chunk->ChunkY*World->ChunkDimInMeters + Y*World->BlockDimInMeters) / MaxDistanceInY;
 					real32 PlateauFalloff;
-					if(fY < 0.1f)
+					if(fY <= 0.05f)
 					{
 						PlateauFalloff = 4.0f;
 					}
@@ -920,7 +918,7 @@ SetupChunk(void *Data)
 					{
 						Noise = 0.0f;
 					}
-					if(Noise > 0.4f)
+					if(Noise > 0.35f)
 					{
 						GetVoxel(Blocks, X, Y, Z).Active = true;
 						Chunk->IsNotEmpty = true;
@@ -969,6 +967,28 @@ SetupChunk(void *Data)
 							GetVoxel(Chunk->Occlusions, X, Y, Z).Front += World->RaySample.Rays[RayIndex].Front;
 							GetVoxel(Chunk->Occlusions, X, Y, Z).Back += World->RaySample.Rays[RayIndex].Back;
 						}
+					}
+				}
+			}
+		}
+	}
+
+	for (uint32 Z = 0; Z < CHUNK_DIM; Z++)
+	{
+		for (uint32 Y = 0; Y < CHUNK_DIM; Y++)
+		{
+			for (uint32 X = 0; X < CHUNK_DIM; X++)
+			{
+				if(CanAddTree(Chunk, X, Y, Z))
+				{
+					if((rand() % 200) == 0)
+					{
+						v3 TreeOffset;
+						TreeOffset.x = (real32)X / (real32)CHUNK_DIM * World->ChunkDimInMeters;
+						TreeOffset.y = (real32)Y / (real32)CHUNK_DIM * World->ChunkDimInMeters;
+						TreeOffset.z = (real32)Z / (real32)CHUNK_DIM * World->ChunkDimInMeters;
+						world_position TreePos = {Chunk->ChunkX, Chunk->ChunkY, Chunk->ChunkZ, TreeOffset};
+						AddLowEntity(World, WorldAllocator, EntityType_Tree, TreePos);
 					}
 				}
 			}
