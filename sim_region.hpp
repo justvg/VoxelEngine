@@ -46,7 +46,7 @@ BeginSimulation(stack_allocator *Allocator, stack_allocator *WorldAllocator, wor
 		{
 			for (int32 ChunkX = MinChunkP.ChunkX; ChunkX <= MaxChunkP.ChunkX; ChunkX++)
 			{
-				world_chunk *Chunk = GetWorldChunk(World, WorldAllocator, ChunkX, ChunkY, ChunkZ);
+				world_chunk *Chunk = GetWorldChunk(World, ChunkX, ChunkY, ChunkZ, WorldAllocator);
 				if (Chunk)
 				{
 					if (!Chunk->IsSetup && (SetupChunksPerFrame < MaxSetupChunksPerFrame))
@@ -69,6 +69,7 @@ BeginSimulation(stack_allocator *Allocator, stack_allocator *WorldAllocator, wor
 							*ChunkToRender = *Chunk;
 							world_position ChunkPosition = {ChunkX, ChunkY, ChunkZ, V3(0.0f, 0.0f, 0.0f)};
 							ChunkToRender->Translation = Substract(World, &ChunkPosition, &SimRegion->Origin);
+							Chunk->Translation = ChunkToRender->Translation;
 							ChunkToRender->LengthSquaredToOrigin = LengthSq(ChunkToRender->Translation);
 							ChunkToRender->NextChunk = World->ChunksRenderList;
 							World->ChunksRenderList = ChunkToRender;
@@ -200,6 +201,47 @@ LoadAsset(graphics_assets *Assets, entity_type Type)
 #endif
 }
 
+internal bool32
+IsBlockActive(world *World, world_chunk *Chunk, world_position WorldP, v3 *BlockPos)
+{
+	uint32 X = (uint32)((WorldP.Offset.x / World->ChunkDimInMeters) * CHUNK_DIM);
+	uint32 Y = (uint32)((WorldP.Offset.y / World->ChunkDimInMeters) * CHUNK_DIM);
+	uint32 Z = (uint32)((WorldP.Offset.z / World->ChunkDimInMeters) * CHUNK_DIM);
+	bool32 Result = GetVoxel(Chunk->Blocks, X, Y, Z).Active;
+
+	BlockPos->x = Chunk->Translation.x + (X*World->BlockDimInMeters + 0.5f*World->BlockDimInMeters);
+	BlockPos->y = Chunk->Translation.y + (Y*World->BlockDimInMeters + 0.5f*World->BlockDimInMeters);
+	BlockPos->z = Chunk->Translation.z + (Z*World->BlockDimInMeters + 0.5f*World->BlockDimInMeters);
+
+	return(Result);
+}
+
+internal bool32
+TestWall(real32 WallX, real32 RelX, real32 RelZ, real32 RelY, real32 PlayerDeltaX, real32 PlayerDeltaZ, real32 PlayerDeltaY,
+         real32 *tMin, real32 MinZ, real32 MaxZ, real32 MinY, real32 MaxY)
+{
+    bool32 Result = false;
+    real32 tEpsilon = 0.05f;
+    if(PlayerDeltaX != 0.0f)
+    {
+        real32 tResult = (WallX - RelX) / PlayerDeltaX;
+        if((tResult >= 0.0f) && (*tMin > tResult))
+        {
+			real32 Z = RelZ + tResult*PlayerDeltaZ;
+			if((Z >= MinZ) && (Z <= MaxZ))
+            {
+				real32 Y = RelY + tResult*PlayerDeltaY;
+				if((Y >= MinY) && (Y <= MaxY))
+				{
+					*tMin = Maximum(0.0f, tResult - tEpsilon);
+					Result = true;
+				}
+            }
+        }
+    }
+    return(Result);
+}
+
 internal void
 MoveEntity(sim_region *SimRegion, sim_entity *Entity, real32 DeltaTime, v3 ddP, real32 Speed)
 {
@@ -210,10 +252,119 @@ MoveEntity(sim_region *SimRegion, sim_entity *Entity, real32 DeltaTime, v3 ddP, 
 	}
 	ddP *= Speed;
 	v3 Drag = -1.5f*Entity->dP;
+	Drag.y = 0.0f;
 	ddP += Drag;
 
-	Entity->P += (0.5f*ddP*DeltaTime*DeltaTime) + (Entity->dP*DeltaTime);
+	world_position OldWorldP = SimRegion->World->LowEntities[Entity->StorageIndex].P;
+#if 1
+	v3 PointsToCheck[4];
+	PointsToCheck[0] = V3(-0.5f*Entity->Dim.x, -0.51f*Entity->Dim.y, -0.5f*Entity->Dim.z);
+	PointsToCheck[1] = V3(-0.5f*Entity->Dim.x, -0.51f*Entity->Dim.y, 0.5f*Entity->Dim.z);
+	PointsToCheck[2] = V3(0.5f*Entity->Dim.x, -0.51f*Entity->Dim.y, -0.5f*Entity->Dim.z);
+	PointsToCheck[3] = V3(0.5f*Entity->Dim.x, -0.51f*Entity->Dim.y, 0.5f*Entity->Dim.z);
+	bool32 Active = false;
+	for (uint32 I = 0; !Active && (I < 4); I++)
+	{
+		world_position NewWorldP = MapIntoChunkSpace(SimRegion->World, OldWorldP, PointsToCheck[I]);
+		world_chunk *Chunk = GetWorldChunk(SimRegion->World, NewWorldP.ChunkX, NewWorldP.ChunkY, NewWorldP.ChunkZ);
+		Assert(Chunk);
+		v3 BlockP;
+		Active = IsBlockActive(SimRegion->World, Chunk, NewWorldP, &BlockP);
+	}
+	if (!Active)
+	{
+		ddP += V3(0.0f, -9.8f, 0.0f);
+		Entity->OnGround = false;
+	}
+	else
+	{
+		Entity->OnGround = true;
+	}
+#endif
+	
+	v3 PreviousPos = Entity->P;
+	v3 CheckPos = (0.5f*ddP*DeltaTime*DeltaTime) + (Entity->dP*DeltaTime) + PreviousPos;
+	v3 EntityDelta = CheckPos - PreviousPos;
+
 	Entity->dP += ddP*DeltaTime;
+
+	for(uint32 Iteration = 0; Iteration < 4; Iteration++)
+	{
+		real32 EntityDeltaLength = Length(EntityDelta);
+		if (EntityDeltaLength > 0.0f)
+		{
+			v3 DesiredPos = Entity->P + EntityDelta;
+			v3 Normal = {};
+			real32 tMin = 1.0f;
+			for (int32 Z = -2; Z <= 2; Z++)
+			{
+				for (int32 Y = -2; Y <= 2; Y++)
+				{
+					for (int32 X = -2; X <= 2; X++)
+					{
+						v3 Offset = { EntityDelta.x + X*SimRegion->World->BlockDimInMeters, EntityDelta.y + Y*SimRegion->World->BlockDimInMeters, EntityDelta.z + Z*SimRegion->World->BlockDimInMeters };
+						world_position NewWorldP = MapIntoChunkSpace(SimRegion->World, OldWorldP, Offset);
+						world_chunk *Chunk = GetWorldChunk(SimRegion->World, NewWorldP.ChunkX, NewWorldP.ChunkY, NewWorldP.ChunkZ);
+						Assert(Chunk);
+						v3 BlockP;
+						bool32 Active = IsBlockActive(SimRegion->World, Chunk, NewWorldP, &BlockP);
+						if(Active)
+						{
+							v3 MinkowskiDiameter = {SimRegion->World->BlockDimInMeters + Entity->Dim.x,
+													SimRegion->World->BlockDimInMeters + Entity->Dim.y,
+													SimRegion->World->BlockDimInMeters + Entity->Dim.z};
+
+							v3 MinCorner = -0.5f*MinkowskiDiameter;
+							v3 MaxCorner = 0.5f*MinkowskiDiameter;
+
+							v3 RelPlayerP = Entity->P - BlockP;
+
+							if(TestWall(MinCorner.x, RelPlayerP.x, RelPlayerP.z, RelPlayerP.y, EntityDelta.x, EntityDelta.z, EntityDelta.y, 
+								&tMin, MinCorner.x, MaxCorner.x, MinCorner.y, MaxCorner.y))
+							{
+								Normal = V3(-1.0f, 0.0f, 0.0f);
+							}
+							if(TestWall(MaxCorner.x, RelPlayerP.x, RelPlayerP.z, RelPlayerP.y, EntityDelta.x, EntityDelta.z, EntityDelta.y, 
+								&tMin, MinCorner.x, MaxCorner.x, MinCorner.y, MaxCorner.y))
+							{
+								Normal = V3(1.0f, 0.0f, 0.0f);
+							}
+							if(TestWall(MinCorner.z, RelPlayerP.z, RelPlayerP.x, RelPlayerP.y, EntityDelta.z, EntityDelta.x, EntityDelta.y,
+								&tMin, MinCorner.x, MaxCorner.x, MinCorner.y, MaxCorner.y))
+							{
+								Normal = V3(0.0f, 0.0f, -1.0f);
+							}
+							if(TestWall(MaxCorner.z, RelPlayerP.z, RelPlayerP.x, RelPlayerP.y, EntityDelta.z, EntityDelta.x, EntityDelta.y,
+								&tMin, MinCorner.x, MaxCorner.x, MinCorner.y, MaxCorner.y))
+							{
+								Normal = V3(0.0f, 0.0f, 1.0f);
+							}
+							if (TestWall(MinCorner.y, RelPlayerP.y, RelPlayerP.x, RelPlayerP.z, EntityDelta.y, EntityDelta.x, EntityDelta.z,
+								&tMin, MinCorner.x, MaxCorner.x, MinCorner.z, MaxCorner.z))
+							{
+								Normal = V3(0.0f, -1.0f, 0.0f);
+							}
+							if (TestWall(MaxCorner.y, RelPlayerP.y, RelPlayerP.x, RelPlayerP.z, EntityDelta.y, EntityDelta.x, EntityDelta.z,
+								&tMin, MinCorner.x, MaxCorner.x, MinCorner.z, MaxCorner.z))
+							{
+								Normal = V3(0.0f, 1.0f, 0.0f);
+							}
+						}
+					}
+				}
+			}
+
+			Entity->P += tMin*EntityDelta;
+			EntityDelta = DesiredPos - Entity->P;
+			if (Normal.x != 0 || Normal.z != 0 || Normal.y != 0)
+			{
+				Entity->dP = Entity->dP - Dot(Entity->dP, Normal)*Normal;
+				EntityDelta = EntityDelta - Dot(EntityDelta, Normal)*Normal;
+			}
+
+			OldWorldP = MapIntoChunkSpace(SimRegion->World, OldWorldP, tMin*EntityDelta);
+		}
+	}
 }
 
 internal void
@@ -231,6 +382,10 @@ UpdateAndRenderEntities(sim_region *SimRegion, graphics_assets *Assets, hero_con
 				case EntityType_Hero:
 				{
 					v3 ddP = Hero->ddP;
+					if (Hero->dY && Entity->OnGround)
+					{
+						Entity->dP.y = Hero->dY;
+					}
 					MoveEntity(SimRegion, Entity, DeltaTime, ddP, 10.0f);
 				} break;
 			}
@@ -242,7 +397,8 @@ UpdateAndRenderEntities(sim_region *SimRegion, graphics_assets *Assets, hero_con
 				{
 					case EntityType_Hero:
 					{
-						ModelMatrix = Scale(0.1f);
+						ModelMatrix = Scale(0.11f);
+						ModelMatrix = ModelMatrix * Rotate(Hero->Rot + 180.0f, V3(0.0f, 1.0f, 0.0f));
 					} break;
 					case EntityType_Tree:
 					{

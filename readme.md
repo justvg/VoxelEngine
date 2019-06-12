@@ -9,10 +9,11 @@ The engine implements the following (and more):
 - Job system
 - Simple math lib
 - Qubicle binary file loading
+- Collision detection with chunks
 
 Features to add necessarily:
 - Unload chunk data that haven't been used for some time
-- Collision detection
+- Collision detection with entities (must be easy to add now)
 - Better world generation 
 - Chunk explosions
 - Entity AI

@@ -21,6 +21,10 @@ GLFWKeyCallback(GLFWwindow *Window, int Key, int Scancode, int Action, int Mods)
 	{
 		Input->MoveRight = (Action != GLFW_RELEASE);
 	}
+	if (Key == GLFW_KEY_SPACE)
+	{
+		Input->MoveUp = (Action == GLFW_PRESS);
+	}
 }
 
 internal void
@@ -75,24 +79,59 @@ ProcessInput(game_input *Input, camera *Camera, hero_control *Hero, real32 Delta
 	Camera->Pitch = Camera->Pitch > 89.0f ? 89.0f : Camera->Pitch;
 	Camera->Pitch = Camera->Pitch < -89.0f ? -89.0f : Camera->Pitch;
 
-	v3 HeroMovementDirection = Normalize(V3(-Camera->OffsetFromHero.x, -Camera->OffsetFromHero.y, -Camera->OffsetFromHero.z));
+	v3 HeroMovementDirection = Normalize(V3(-Camera->OffsetFromHero.x, 0, -Camera->OffsetFromHero.z));
+	real32 Theta = atan2f(-HeroMovementDirection.z, HeroMovementDirection.x) * 180.0f / M_PI;
+
 	v3 CameraUp = {0.0f, 1.0f, 0.0f};
 	Hero->ddP = {};
+	Hero->dY = 0.0f;
 	if(Input->MoveForward)
 	{
 		Hero->ddP += HeroMovementDirection;
+		Hero->Rot = Theta - 90.0f;
+		Hero->Rot += 0.0f;
 	}
 	if(Input->MoveBack)
 	{
 		Hero->ddP -= HeroMovementDirection;
+		Hero->Rot = Theta - 90.0f;
+		Hero->Rot += 180.0f;
 	}
 	if(Input->MoveLeft)
 	{
 		Hero->ddP -= Normalize(Cross(HeroMovementDirection, CameraUp));
+		Hero->Rot = Theta - 90.0f;
+		Hero->Rot += 90.0f;
 	}
 	if(Input->MoveRight)
 	{
 		Hero->ddP += Normalize(Cross(HeroMovementDirection, CameraUp));
+		Hero->Rot = Theta - 90.0f;
+		Hero->Rot += -90.0f;
+	}
+	if (Input->MoveForward && Input->MoveRight)
+	{
+		Hero->Rot = Theta - 90.0f;
+		Hero->Rot += -45.0f;
+	}
+	if (Input->MoveForward && Input->MoveLeft)
+	{
+		Hero->Rot = Theta - 90.0f;
+		Hero->Rot += 45.0f;
+	}
+	if (Input->MoveBack && Input->MoveRight)
+	{
+		Hero->Rot = Theta - 90.0f;
+		Hero->Rot += -135.0f;
+	}
+	if (Input->MoveBack && Input->MoveLeft)
+	{
+		Hero->Rot = Theta - 90.0f;
+		Hero->Rot += 135.0f;
+	}
+	if (Input->MoveUp)
+	{
+		Hero->dY = 3.0f;
 	}
 }
 
@@ -171,8 +210,8 @@ int main(void)
 	mat4 Projection = Perspective(45.0f, (real32)Width / (real32)Height, 0.1f, 100.0f);
 	glUniformMatrix4fv(glGetUniformLocation(TestShader.ID, "Projection"), 1, GL_FALSE, Projection.Elements);
 
-	world_position TestHeroPosition = {10004, 1, 10002, V3(0.0f, 0.0f, 0.0f)};
-	Game.Hero = AddLowEntity(World, &Game.WorldAllocator, EntityType_Hero, TestHeroPosition);
+	world_position TestHeroPosition = {10004, 1, 10002, V3(0.0f, 0.25f, 0.0f)};
+	Game.Hero = AddLowEntity(World, &Game.WorldAllocator, EntityType_Hero, TestHeroPosition, V3(1.0f, 1.0f, 1.0f));
 
 	real32 DeltaTime = TargetSecondsForFrame;
 	real32 LastFrame = (real32)glfwGetTime();

@@ -54,6 +54,7 @@ struct game_input
 			bool32 MoveBack;
 			bool32 MoveLeft;
 			bool32 MoveRight;
+			bool32 MoveUp;
 		};
 	};
 };
@@ -141,6 +142,9 @@ SubMemory(stack_allocator *Result, stack_allocator *Allocator, memory_size Size)
 struct hero_control
 {
 	v3 ddP;
+	real32 dY;
+
+	real32 Rot;
 };
 
 #include "maths.hpp"
@@ -152,7 +156,7 @@ struct hero_control
 #include "sim_region.hpp"
 
 internal low_entity * 
-AddLowEntity(world *World, stack_allocator *WorldAllocator, entity_type Type, world_position P)
+AddLowEntity(world *World, stack_allocator *WorldAllocator, entity_type Type, world_position P, v3 Dim)
 {
 	Assert(World->LowEntityCount < ArrayCount(World->LowEntities));
 	uint32 EntityIndex = World->LowEntityCount++;
@@ -161,6 +165,7 @@ AddLowEntity(world *World, stack_allocator *WorldAllocator, entity_type Type, wo
 	*LowEntity = {};
 	LowEntity->Sim.StorageIndex = EntityIndex;
 	LowEntity->Sim.Type = Type;
+	LowEntity->Sim.Dim = Dim;
 	LowEntity->P = InvalidPosition();
 
 	ChangeEntityLocation(World, WorldAllocator, EntityIndex, LowEntity, P);

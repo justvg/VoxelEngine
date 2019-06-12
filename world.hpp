@@ -138,7 +138,12 @@ struct sim_entity
 {
 	uint32 StorageIndex;
 	entity_type Type;
+
+	// NOTE(georgy): Now col. volume center is the center of the entity
+	v3 Dim;
+
 	bool32 Updatable;
+	bool32 OnGround;
 
 	v3 P;
 	v3 dP;
@@ -653,7 +658,7 @@ AddQuad(std::vector<block_vertex> *VertexBuffer, block_vertex *A, block_vertex *
 
 #define TILE_CHUNK_SAFE_MARGIN (INT32_MAX/64)
 internal world_chunk * 
-GetWorldChunk(world *World, stack_allocator *WorldAllocator, int32 ChunkX, int32 ChunkY, int32 ChunkZ)
+GetWorldChunk(world *World, int32 ChunkX, int32 ChunkY, int32 ChunkZ, stack_allocator *WorldAllocator = 0)
 {
 	Assert(ChunkX < TILE_CHUNK_SAFE_MARGIN);
 	Assert(ChunkY < TILE_CHUNK_SAFE_MARGIN);
@@ -677,7 +682,7 @@ GetWorldChunk(world *World, stack_allocator *WorldAllocator, int32 ChunkX, int32
 			break;
 		}
 		
-		if(!Chunk->NextChunk)
+		if(!Chunk->NextChunk && WorldAllocator)
 		{
 			Chunk->NextChunk = PushStruct(WorldAllocator, world_chunk);
 			Chunk = Chunk->NextChunk;
@@ -698,7 +703,7 @@ GetWorldChunk(world *World, stack_allocator *WorldAllocator, int32 ChunkX, int32
 		Chunk = Chunk->NextChunk;
 	}
 
-	if(Chunk == 0)
+	if(Chunk == 0 && WorldAllocator)
 	{
 		Chunk = PushStruct(WorldAllocator, world_chunk);
 		Chunk->ChunkX = ChunkX;
@@ -973,6 +978,7 @@ SetupChunk(void *Data)
 		}
 	}
 
+#if 0
 	for (uint32 Z = 0; Z < CHUNK_DIM; Z++)
 	{
 		for (uint32 Y = 0; Y < CHUNK_DIM; Y++)
@@ -994,6 +1000,7 @@ SetupChunk(void *Data)
 			}
 		}
 	}
+#endif
 
 	GenerateChunkVertices(World, Chunk, BlockDimInMeters);
 
@@ -1069,7 +1076,7 @@ ChangeEntityLocation(world *World, stack_allocator *WorldAllocator, uint32 Entit
 	{
 		if(OldP)
 		{
-			world_chunk *Chunk = GetWorldChunk(World, WorldAllocator, OldP->ChunkX, OldP->ChunkY, OldP->ChunkZ);
+			world_chunk *Chunk = GetWorldChunk(World, OldP->ChunkX, OldP->ChunkY, OldP->ChunkZ, WorldAllocator);
 			Assert(Chunk);
 			world_entity_block *FirstBlock = &Chunk->FirstBlock; 
 			bool32 NotFound = true;
@@ -1102,7 +1109,7 @@ ChangeEntityLocation(world *World, stack_allocator *WorldAllocator, uint32 Entit
 
 		if(NewP)
 		{
-			world_chunk *Chunk = GetWorldChunk(World, WorldAllocator, NewP->ChunkX, NewP->ChunkY, NewP->ChunkZ);
+			world_chunk *Chunk = GetWorldChunk(World, NewP->ChunkX, NewP->ChunkY, NewP->ChunkZ, WorldAllocator);
 			Assert(Chunk);
 
 			world_entity_block *Block = &Chunk->FirstBlock;
