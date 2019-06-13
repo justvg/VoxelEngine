@@ -131,8 +131,10 @@ ProcessInput(game_input *Input, camera *Camera, hero_control *Hero, real32 Delta
 	}
 	if (Input->MoveUp)
 	{
-		Hero->dY = 3.0f;
+		Hero->dY = 5.0f;
 	}
+
+	Hero->Attack = Input->MouseLeft;
 }
 
 int main(void)
@@ -187,7 +189,7 @@ int main(void)
 	glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
 	camera *Camera = &Game.Camera;
-	Camera->DistanceFromHero = 5.0f;
+	Camera->DistanceFromHero = 8.0f;
 	Camera->Pitch = 0.0f;
 	Camera->Head = 0.0f;
 	Camera->RotSensetivity = 0.1f;
@@ -205,6 +207,33 @@ int main(void)
 	// glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
 	shader TestShader("shaders/vertex.vert", "shaders/fragment.frag");
+	shader TestShader2D("shaders/2d.vert", "shaders/2d.frag");
+
+	real32 TestCrosshairVertices[] =
+	{
+		Width / 2.0f - 7.5f, Height / 2.0f - 7.5f - 55.0f, 0.0f, 1.0f,
+		Width / 2.0f - 7.5f, Height / 2.0f + 7.5f - 55.0f, 0.0f, 0.0f,
+		Width / 2.0f + 7.5f, Height / 2.0f - 7.5f - 55.0f, 1.0f, 1.0f,
+		Width / 2.0f + 7.5f, Height / 2.0f + 7.5f - 55.0f, 1.0f, 0.0f,
+	};
+	GLuint VAOCrosshair, VBOCrosshair;
+	glGenVertexArrays(1, &VAOCrosshair);
+	glGenBuffers(1, &VBOCrosshair);
+	glBindVertexArray(VAOCrosshair);
+	glBindBuffer(GL_ARRAY_BUFFER, VBOCrosshair);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(TestCrosshairVertices), TestCrosshairVertices, GL_STATIC_DRAW);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4*sizeof(real32), (void *)0);
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4*sizeof(real32), (void *)(2*sizeof(real32)));
+	glBindVertexArray(0);
+
+	GLuint CrosshairTexture = LoadTexture("data/textures/crosshair.tga");
+
+	TestShader2D.Enable();
+	mat4 Orthographic = Ortho(Height, 0, 0, Width, -1.0f, 1.0f);
+	glUniformMatrix4fv(glGetUniformLocation(TestShader2D.ID, "Projection"), 1, GL_FALSE, Orthographic.Elements);
+	glUniform1i(glGetUniformLocation(TestShader2D.ID, "Texture"), 0);
 
 	TestShader.Enable();
 	mat4 Projection = Perspective(45.0f, (real32)Width / (real32)Height, 0.1f, 100.0f);
@@ -230,6 +259,7 @@ int main(void)
 		sim_region *SimRegion = BeginSimulation(&Game.TranAllocator, &Game.WorldAllocator, World, Origin, Bounds);
 
 		SetupChunks(Game.JobSystem, World, &Game.WorldAllocator, &Game.TranAllocator, Game.WorldAllocatorSemaphore);
+		UpdateChunks(World);
 		LoadChunks(World);
 
 		UpdateCameraOffsetFromHero(Camera);
@@ -243,6 +273,18 @@ int main(void)
 		EndSimulation(SimRegion, World, &Game.WorldAllocator);
 		EndTemporaryMemory(TempSimMemory);
 
+		TestShader2D.Enable();
+		glDisable(GL_DEPTH_TEST);
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glBindVertexArray(VAOCrosshair);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, CrosshairTexture);
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+		glBindVertexArray(0);
+		glEnable(GL_DEPTH_TEST);
+		glDisable(GL_BLEND);
+
 		DeltaTime = (real32)glfwGetTime() - LastFrame;
 		// TODO(george): Implement sleeping instead of busy waiting
 #if 1
@@ -253,7 +295,7 @@ int main(void)
 #endif
 		LastFrame = (real32)glfwGetTime();
 
-		std::cout << DeltaTime << std::endl;
+		// std::cout << DeltaTime << std::endl;
 
 		glfwPollEvents();
 		glfwSwapBuffers(Window);

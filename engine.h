@@ -144,9 +144,12 @@ struct hero_control
 	v3 ddP;
 	real32 dY;
 
+	bool32 Attack;
+
 	real32 Rot;
 };
 
+#include "utils.hpp"
 #include "maths.hpp"
 #include "mat.hpp"
 #include "shader.hpp"

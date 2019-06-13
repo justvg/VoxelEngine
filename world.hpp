@@ -117,6 +117,7 @@ struct world_chunk
 	world_chunk *NextChunk;
 	world_chunk *NextChunkSetup;
 	world_chunk *NextChunkLoad;
+	world_chunk *NextChunkUpdate;
 };
 
 #define RAY_COUNT 16
@@ -147,6 +148,8 @@ struct sim_entity
 
 	v3 P;
 	v3 dP;
+
+	v3 FacingDir;
 };
 
 struct low_entity
@@ -166,6 +169,7 @@ struct world
 
 	world_chunk *ChunksSetupList;
 	world_chunk *ChunksLoadList;
+	world_chunk *ChunksUpdateList;
 	world_chunk *ChunksRenderList;
 
 	// NOTE(georgy): Must be a power of two!
@@ -272,6 +276,7 @@ InitializeWorld(world *World)
 {
 	InitRaySample(World);
 	World->ChunkDimInMeters = CHUNK_DIM / 2.0f;
+	//World->ChunkDimInMeters = CHUNK_DIM;
 	World->BlockDimInMeters = World->ChunkDimInMeters / CHUNK_DIM;
 	World->LowEntityCount = 0;
 	World->FirstFreeEntityBlock = 0;
@@ -1005,6 +1010,8 @@ SetupChunk(void *Data)
 	GenerateChunkVertices(World, Chunk, BlockDimInMeters);
 
 	Chunk->IsSetup = true;
+	Chunk->IsLoaded = false;
+	Chunk->IsModified = false;
 }
 
 internal void
@@ -1023,31 +1030,37 @@ SetupChunks(job_system_queue *JobSystem, world *World, stack_allocator *WorldAll
 	CompleteAllWork(JobSystem);
 }
 
-#if 0
 internal void
 UpdateChunk(world *World, world_chunk *Chunk)
 {
-	Chunk->VertexBuffer->resize(0);
-	
 	block *Blocks = Chunk->Blocks;
-	real32 BlockDimInMeters = World->BlockDimInMeters;
+	Chunk->IsNotEmpty = false;
+	for (uint32 Z = 0; Z < CHUNK_DIM && !Chunk->IsNotEmpty; Z++)
+	{
+		for (uint32 Y = 0; Y < CHUNK_DIM && !Chunk->IsNotEmpty; Y++)
+		{
+			for (uint32 X = 0; X < CHUNK_DIM && !Chunk->IsNotEmpty; X++)
+			{
+				Chunk->IsNotEmpty = GetVoxel(Blocks, X, Y, Z).Active;
+			}
+		}
+	}
 
-	GenerateChunkVertices(World, Chunk, BlockDimInMeters);
+	Chunk->VertexBuffer->resize(0);
+	GenerateChunkVertices(World, Chunk, World->BlockDimInMeters);
 
-	glBindVertexArray(Chunk->VAO);
-	glBindBuffer(GL_ARRAY_BUFFER, Chunk->VBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(block_vertex)*Chunk->VertexBuffer->size(), &(*Chunk->VertexBuffer)[0], GL_STATIC_DRAW);
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(block_vertex), (void *)0);
-	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(block_vertex), (void *)(sizeof(real32)*3));
-	glEnableVertexAttribArray(2);
-	glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(block_vertex), (void *)(sizeof(real32)*6));
-	glEnableVertexAttribArray(3);
-	glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(block_vertex), (void *)(sizeof(real32)*9));
-	glBindVertexArray(0);
+	Chunk->IsModified = false;
+	Chunk->IsLoaded = false;
 }
-#endif
+
+internal void
+UpdateChunks(world *World)
+{
+	for (world_chunk *Chunk = World->ChunksUpdateList; Chunk; Chunk = Chunk->NextChunkUpdate)
+	{
+		UpdateChunk(World, Chunk);
+	}
+}
 
 internal void
 ChangeEntityLocation(world *World, stack_allocator *WorldAllocator, uint32 EntityIndex, low_entity *LowEntity, world_position NewPInit)

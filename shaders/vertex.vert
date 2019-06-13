@@ -28,5 +28,3 @@ void main()
 
 	gl_Position = Projection * Temp;
 }
-
-

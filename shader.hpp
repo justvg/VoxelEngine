@@ -9,23 +9,6 @@ struct shader
 	void Disable();
 };
 
-internal char *
-ReadEntireFile(const char *Filename)
-{
-	FILE *File = fopen(Filename, "rb");
-	fseek(File, 0, SEEK_END);
-	uint32 FileSize = ftell(File);
-	fseek(File, 0, SEEK_SET);
-
-	char *String = (char *)malloc(FileSize + 1);
-	fread(String, 1, FileSize, File);
-	fclose(File);
-
-	String[FileSize] = 0;
-
-	return(String);
-}
-
 shader::shader(const char *VertexPath, const char *FragmentPath, const char *GeometryPath)
 {
 	GLuint VertexShader = glCreateShader(GL_VERTEX_SHADER);

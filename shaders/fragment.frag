@@ -18,7 +18,8 @@ vec3 Fog(vec3 SourceColor, vec3 FogColor, float Distance, float FogDensity)
 
 void main()
 {
-	vec3 Ambient = 0.2 * Color * Occlusion;
+	//vec3 Ambient = 0.2 * Color * Occlusion;
+	vec3 Ambient = 0.2 * Color;
 
 	vec3 LightDir = normalize(-LightDir);
 	vec3 Diffuse = max(dot(LightDir, Normal), 0.0) * Color;
@@ -28,7 +29,7 @@ void main()
 	vec3 Specular = pow(max(dot(ViewDir, Reflection), 0.0), 5) * Color; 
 
 	vec3 FinalColor = Ambient + Diffuse + Specular;
-	FinalColor = Fog(FinalColor, vec3(0.2549, 0.4117, 1.0), FragPosView.z, 0.015);
+	FinalColor = Fog(FinalColor, vec3(0.2549, 0.4117, 1.0), FragPosView.z, 0.01);
 	FinalColor = sqrt(FinalColor);
 	FragColor = vec4(FinalColor, 1.0);
 }

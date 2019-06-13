@@ -22,6 +22,9 @@ BeginSimulation(stack_allocator *Allocator, stack_allocator *WorldAllocator, wor
 	uint32 MaxLoadChunksPerFrame = 4;
 	uint32 LoadChunksPerFrame = 0;
 
+	uint32 MaxUpdateChunksPerFrame = 4;
+	uint32 UpdateChunksPerFrame = 0;
+
 	sim_region *SimRegion = PushStruct(Allocator, sim_region);
 	SimRegion->World = World;
 	SimRegion->Origin = Origin;
@@ -55,13 +58,20 @@ BeginSimulation(stack_allocator *Allocator, stack_allocator *WorldAllocator, wor
 						Chunk->NextChunkSetup = World->ChunksSetupList;
 						World->ChunksSetupList = Chunk;
 					}
-					else if (Chunk->IsSetup && Chunk->IsNotEmpty && !Chunk->IsLoaded && (LoadChunksPerFrame < MaxLoadChunksPerFrame))
+					else if(Chunk->IsSetup && Chunk->IsModified && (UpdateChunksPerFrame < MaxUpdateChunksPerFrame))
+					{
+						UpdateChunksPerFrame++;
+						Chunk->NextChunkUpdate = World->ChunksUpdateList;
+						World->ChunksUpdateList = Chunk;
+					}
+					else if (Chunk->IsSetup && Chunk->IsNotEmpty && !Chunk->IsModified && !Chunk->IsLoaded && (LoadChunksPerFrame < MaxLoadChunksPerFrame))
 					{
 						LoadChunksPerFrame++;
 						Chunk->NextChunkLoad = World->ChunksLoadList;
 						World->ChunksLoadList = Chunk;
 					}
-					else if(Chunk->IsSetup && Chunk->IsLoaded)
+					
+					if(Chunk->IsSetup)
 					{
 						if(Chunk->IsNotEmpty)
 						{
@@ -116,6 +126,7 @@ EndSimulation(sim_region *SimRegion, world *World, stack_allocator *WorldAllocat
 {
 	World->ChunksSetupList = 0;
 	World->ChunksLoadList = 0;
+	World->ChunksUpdateList = 0;
 	World->ChunksRenderList = 0;
 
 	for(uint32 EntityIndex = 0; EntityIndex < SimRegion->EntityCount; EntityIndex++)
@@ -214,6 +225,20 @@ IsBlockActive(world *World, world_chunk *Chunk, world_position WorldP, v3 *Block
 	BlockPos->z = Chunk->Translation.z + (Z*World->BlockDimInMeters + 0.5f*World->BlockDimInMeters);
 
 	return(Result);
+}
+
+internal void
+SetBlockActive(world *World, world_chunk *Chunk, world_position WorldP, bool32 Active)
+{
+	uint32 X = (uint32)((WorldP.Offset.x / World->ChunkDimInMeters) * CHUNK_DIM);
+	uint32 Y = (uint32)((WorldP.Offset.y / World->ChunkDimInMeters) * CHUNK_DIM);
+	uint32 Z = (uint32)((WorldP.Offset.z / World->ChunkDimInMeters) * CHUNK_DIM);
+
+	if(GetVoxel(Chunk->Blocks, X, Y, Z).Active != Active)
+	{
+		GetVoxel(Chunk->Blocks, X, Y, Z).Active = Active;
+		Chunk->IsModified = true;
+	}
 }
 
 internal bool32
@@ -381,10 +406,20 @@ UpdateAndRenderEntities(sim_region *SimRegion, graphics_assets *Assets, hero_con
 			{
 				case EntityType_Hero:
 				{
+					Entity->FacingDir = Normalize(V3(CameraOffsetFromHero.x, 0, CameraOffsetFromHero.z));
 					v3 ddP = Hero->ddP;
 					if (Hero->dY && Entity->OnGround)
 					{
 						Entity->dP.y = Hero->dY;
+					}
+					if (Hero->Attack)
+					{
+						world_position OldWorldP = SimRegion->World->LowEntities[Entity->StorageIndex].P;
+						world_position NewWorldP = MapIntoChunkSpace(SimRegion->World, OldWorldP, Entity->FacingDir);
+						world_chunk *Chunk = GetWorldChunk(SimRegion->World, NewWorldP.ChunkX, NewWorldP.ChunkY, NewWorldP.ChunkZ);
+						Assert(Chunk);
+						v3 BlockP;
+						SetBlockActive(SimRegion->World, Chunk, NewWorldP, false);
 					}
 					MoveEntity(SimRegion, Entity, DeltaTime, ddP, 10.0f);
 				} break;
