@@ -145,6 +145,7 @@ struct hero_control
 	real32 dY;
 
 	bool32 Attack;
+	bool32 Fireball;
 
 	real32 Rot;
 };
@@ -153,14 +154,21 @@ struct hero_control
 #include "maths.hpp"
 #include "mat.hpp"
 #include "shader.hpp"
-#include "qubicle_binary_loader.hpp"
 #include "sound_manager.hpp"
+#include "qubicle_binary_loader.hpp"
 #include "world.hpp"
 #include "sim_region.hpp"
 
-internal low_entity * 
+struct add_low_entity_result
+{
+	low_entity *LowEntity;
+	uint32 StorageIndex;
+};
+internal add_low_entity_result
 AddLowEntity(world *World, stack_allocator *WorldAllocator, entity_type Type, world_position P, v3 Dim)
 {
+	add_low_entity_result Result;
+
 	Assert(World->LowEntityCount < ArrayCount(World->LowEntities));
 	uint32 EntityIndex = World->LowEntityCount++;
 
@@ -173,7 +181,31 @@ AddLowEntity(world *World, stack_allocator *WorldAllocator, entity_type Type, wo
 
 	ChangeEntityLocation(World, WorldAllocator, EntityIndex, LowEntity, P);
 
-	return(LowEntity);
+	Result.LowEntity = LowEntity;
+	Result.StorageIndex = EntityIndex;
+
+	return(Result);
+}
+
+internal uint32
+AddFireball(world *World, stack_allocator *WorldAllocator)
+{
+	add_low_entity_result Entity = AddLowEntity(World, WorldAllocator, EntityType_Fireball, InvalidPosition(), V3(0.3f, 0.3f, 0.3f));
+	Entity.LowEntity->Sim.Moveable = true;
+	Entity.LowEntity->Sim.NonSpatial = true;
+
+	return(Entity.StorageIndex);
+}
+
+internal low_entity *
+AddHero(world *World, stack_allocator *WorldAllocator, world_position P, v3 Dim)
+{
+	add_low_entity_result Entity = AddLowEntity(World, WorldAllocator, EntityType_Hero, P, Dim);
+
+	Entity.LowEntity->Sim.Moveable = true;
+	Entity.LowEntity->Sim.Fireball.LowIndex = AddFireball(World, WorldAllocator);
+
+	return(Entity.LowEntity);
 }
 
 struct camera
@@ -216,4 +248,3 @@ struct game
 	low_entity *Hero;
 	hero_control HeroControl;
 };
-

@@ -11,7 +11,85 @@ struct sim_region
 	uint32 MaxEntityCount;
 	uint32 EntityCount;
 	sim_entity *Entities;
+
+	// NOTE(georgy): Must be power of two!
+	entity_reference Hash[4096];
 };
+
+internal entity_reference *
+GetHashFromStorageIndex(sim_region *SimRegion, uint32 StorageIndex)
+{
+	Assert(StorageIndex);
+
+	entity_reference *Result = 0;
+
+	uint32 HashValue = StorageIndex;
+	for(uint32 Offset = 0; Offset < ArrayCount(SimRegion->Hash); Offset++)
+	{
+		uint32 HashMask = ArrayCount(SimRegion->Hash) - 1;
+		uint32 HashIndex = (HashValue + Offset) & HashMask;
+		entity_reference *Entry = SimRegion->Hash + HashIndex;
+		if((Entry->LowIndex == 0) || (Entry->LowIndex == StorageIndex))
+		{
+			Result = Entry;
+			break;
+		}
+	}
+
+	return(Result);
+}
+
+inline v3
+GetSimSpaceP(sim_region *SimRegion, low_entity *LowEntity)
+{
+	// TODO(georgy): Formulate this!
+	v3 Result = V3(TILE_CHUNK_SAFE_MARGIN, TILE_CHUNK_SAFE_MARGIN, TILE_CHUNK_SAFE_MARGIN);
+	if(!LowEntity->Sim.NonSpatial)
+	{
+		Result = Substract(SimRegion->World, &LowEntity->P, &SimRegion->Origin);
+	}
+
+	return(Result);
+}
+
+internal sim_entity *
+AddEntity(sim_region *SimRegion, low_entity *LowEntity, v3 SimSpaceP);
+inline void
+LoadEntityReference(sim_region *SimRegion, entity_reference *Ref)
+{
+	if(Ref->LowIndex && !Ref->SimPtr)
+	{
+		low_entity *LowEntity = SimRegion->World->LowEntities + Ref->LowIndex;
+		v3 SimSpaceP = GetSimSpaceP(SimRegion, LowEntity);
+		Ref->SimPtr = AddEntity(SimRegion, LowEntity, SimSpaceP);
+	}
+}
+
+internal sim_entity *
+AddEntity(sim_region *SimRegion, low_entity *LowEntity, v3 SimSpaceP)
+{
+	sim_entity *Entity = 0;
+
+	entity_reference *Entry = GetHashFromStorageIndex(SimRegion, LowEntity->Sim.StorageIndex);
+	if(Entry->SimPtr == 0)
+	{
+		if (SimRegion->EntityCount < SimRegion->MaxEntityCount)
+		{
+			Entity = SimRegion->Entities + SimRegion->EntityCount++;
+			LowEntity->Sim.P = SimSpaceP;
+			LowEntity->Sim.Updatable = IsInRect(SimRegion->UpdatableBounds, SimSpaceP);
+
+			*Entity = LowEntity->Sim;
+			
+			Entry->LowIndex = Entity->StorageIndex;
+			Entry->SimPtr = Entity;
+
+			LoadEntityReference(SimRegion, &Entity->Fireball);
+		}
+	}
+
+	return(Entity);
+}
 
 internal sim_region *
 BeginSimulation(stack_allocator *Allocator, stack_allocator *WorldAllocator, world *World, world_position Origin, rect3 Bounds)
@@ -29,6 +107,7 @@ BeginSimulation(stack_allocator *Allocator, stack_allocator *WorldAllocator, wor
 	SimRegion->World = World;
 	SimRegion->Origin = Origin;
 	SimRegion->UpdatableBounds = Bounds;
+	ZeroMemory(SimRegion->Hash, ArrayCount(SimRegion->Hash)*sizeof(entity_reference));
 	// TODO(georgy): Need more accurate values here!
 	real32 MaxEntityRadius = 5.0f;
 	real32 MaxEntityVelocity = 5.0f;
@@ -73,21 +152,18 @@ BeginSimulation(stack_allocator *Allocator, stack_allocator *WorldAllocator, wor
 					
 					if(Chunk->IsSetup)
 					{
-						if(Chunk->IsNotEmpty)
+						if (Chunk->IsNotEmpty)
 						{
 							world_chunk *ChunkToRender = PushStruct(Allocator, world_chunk);
 							*ChunkToRender = *Chunk;
-							world_position ChunkPosition = {ChunkX, ChunkY, ChunkZ, V3(0.0f, 0.0f, 0.0f)};
+							world_position ChunkPosition = { ChunkX, ChunkY, ChunkZ, V3(0.0f, 0.0f, 0.0f) };
 							ChunkToRender->Translation = Substract(World, &ChunkPosition, &SimRegion->Origin);
 							Chunk->Translation = ChunkToRender->Translation;
 							ChunkToRender->LengthSquaredToOrigin = LengthSq(ChunkToRender->Translation);
 							ChunkToRender->NextChunk = World->ChunksRenderList;
 							World->ChunksRenderList = ChunkToRender;
 						}
-					}
 
-					if(Chunk->IsSetup)
-					{
 						for(world_entity_block *Block = &Chunk->FirstBlock; Block; Block = Block->Next)
 						{
 							for(uint32 EntityIndexInBlock = 0; EntityIndexInBlock < Block->LowEntityCount; EntityIndexInBlock++)
@@ -96,18 +172,11 @@ BeginSimulation(stack_allocator *Allocator, stack_allocator *WorldAllocator, wor
 								low_entity *LowEntity = World->LowEntities + LowEntityIndex;
 								v3 SimSpaceP = Substract(World, &LowEntity->P, &SimRegion->Origin);
 								// TODO(georgy): Change this test to testing entity volume and sim bound, not a point and sim bound!
-								if(IsInRect(SimRegion->Bounds, SimSpaceP))
+								if(!LowEntity->Sim.NonSpatial)
 								{
-									if(SimRegion->EntityCount < SimRegion->MaxEntityCount)
+									if(IsInRect(SimRegion->Bounds, SimSpaceP))
 									{
-										sim_entity *Entity = SimRegion->Entities + SimRegion->EntityCount++;
-										LowEntity->Sim.P = SimSpaceP;
-										if(IsInRect(SimRegion->UpdatableBounds, SimSpaceP))
-										{
-											LowEntity->Sim.Updatable = true;
-										}
-
-										*Entity = LowEntity->Sim;
+										AddEntity(SimRegion, LowEntity, SimSpaceP);
 									}
 								}
 							}
@@ -132,8 +201,8 @@ EndSimulation(sim_region *SimRegion, world *World, stack_allocator *WorldAllocat
 	for(uint32 EntityIndex = 0; EntityIndex < SimRegion->EntityCount; EntityIndex++)
 	{
 		sim_entity *Entity = SimRegion->Entities + EntityIndex;
+		Entity->Fireball.SimPtr = 0;
 		low_entity *LowEntity = World->LowEntities + Entity->StorageIndex;
-
 		LowEntity->Sim = *Entity;
 
 		world_position NewP = MapIntoChunkSpace(World, SimRegion->Origin, Entity->P);
@@ -267,18 +336,26 @@ TestWall(real32 WallX, real32 RelX, real32 RelZ, real32 RelY, real32 PlayerDelta
     return(Result);
 }
 
-internal void
-MoveEntity(sim_region *SimRegion, sim_entity *Entity, real32 DeltaTime, v3 ddP, real32 Speed)
+struct move_spec
 {
-	real32 ddPLength = LengthSq(ddP);
+	v3 ddP;
+	real32 Speed;
+	real32 Drag;
+	bool32 GravityAffected;
+};
+
+internal void
+MoveEntity(sim_region *SimRegion, sim_entity *Entity, real32 DeltaTime, move_spec *MoveSpec)
+{
+	real32 ddPLength = LengthSq(MoveSpec->ddP);
 	if(ddPLength > 1.0f)
 	{
-		ddP *= 1.0f / sqrtf(ddPLength); 
+		MoveSpec->ddP *= 1.0f / sqrtf(ddPLength);
 	}
-	ddP *= Speed;
-	v3 Drag = -1.5f*Entity->dP;
-	Drag.y = 0.0f;
-	ddP += Drag;
+	MoveSpec->ddP *= MoveSpec->Speed;
+	v3 DragV = -MoveSpec->Drag*Entity->dP;
+	DragV.y = 0.0f;
+	MoveSpec->ddP += DragV;
 
 	world_position OldWorldP = SimRegion->World->LowEntities[Entity->StorageIndex].P;
 #if 1
@@ -296,9 +373,9 @@ MoveEntity(sim_region *SimRegion, sim_entity *Entity, real32 DeltaTime, v3 ddP, 
 		v3 BlockP;
 		Active = IsBlockActive(SimRegion->World, Chunk, NewWorldP, &BlockP);
 	}
-	if (!Active)
+	if (!Active && MoveSpec->GravityAffected)
 	{
-		ddP += V3(0.0f, -9.8f, 0.0f);
+		MoveSpec->ddP += V3(0.0f, -9.8f, 0.0f);
 		Entity->OnGround = false;
 	}
 	else
@@ -308,19 +385,29 @@ MoveEntity(sim_region *SimRegion, sim_entity *Entity, real32 DeltaTime, v3 ddP, 
 #endif
 	
 	v3 PreviousPos = Entity->P;
-	v3 CheckPos = (0.5f*ddP*DeltaTime*DeltaTime) + (Entity->dP*DeltaTime) + PreviousPos;
+	v3 CheckPos = (0.5f*MoveSpec->ddP*DeltaTime*DeltaTime) + (Entity->dP*DeltaTime) + PreviousPos;
 	v3 EntityDelta = CheckPos - PreviousPos;
 
-	Entity->dP += ddP*DeltaTime;
+	Entity->dP += MoveSpec->ddP*DeltaTime;
+
+	real32 DistanceRemaining = Entity->DistanceLimit;
+	if (DistanceRemaining == 0.0f)
+	{
+		DistanceRemaining = 10000.0f;
+	}
 
 	for(uint32 Iteration = 0; Iteration < 4; Iteration++)
 	{
 		real32 EntityDeltaLength = Length(EntityDelta);
 		if (EntityDeltaLength > 0.0f)
 		{
+			real32 tMin = 1.0f;
+			if (EntityDeltaLength > DistanceRemaining)
+			{
+				tMin = DistanceRemaining / EntityDeltaLength;
+			}
 			v3 DesiredPos = Entity->P + EntityDelta;
 			v3 Normal = {};
-			real32 tMin = 1.0f;
 			for (int32 Z = -2; Z <= 2; Z++)
 			{
 				for (int32 Y = -2; Y <= 2; Y++)
@@ -380,6 +467,7 @@ MoveEntity(sim_region *SimRegion, sim_entity *Entity, real32 DeltaTime, v3 ddP, 
 			}
 
 			Entity->P += tMin*EntityDelta;
+			DistanceRemaining -= tMin*EntityDeltaLength;
 			EntityDelta = DesiredPos - Entity->P;
 			if (Normal.x != 0 || Normal.z != 0 || Normal.y != 0)
 			{
@@ -389,6 +477,11 @@ MoveEntity(sim_region *SimRegion, sim_entity *Entity, real32 DeltaTime, v3 ddP, 
 
 			OldWorldP = MapIntoChunkSpace(SimRegion->World, OldWorldP, tMin*EntityDelta);
 		}
+	}
+
+	if (Entity->DistanceLimit != 0.0f)
+	{
+		Entity->DistanceLimit = DistanceRemaining;
 	}
 }
 
@@ -402,12 +495,16 @@ UpdateAndRenderEntities(sim_region *SimRegion, graphics_assets *Assets, hero_con
 
 		if(Entity->Updatable)
 		{
+			move_spec MoveSpec = {};
 			switch(Entity->Type)
 			{
 				case EntityType_Hero:
 				{
 					Entity->FacingDir = Normalize(V3(CameraOffsetFromHero.x, 0, CameraOffsetFromHero.z));
-					v3 ddP = Hero->ddP;
+					MoveSpec.ddP = Hero->ddP;
+					MoveSpec.Speed = 10.0f;
+					MoveSpec.Drag = 1.5f;
+					MoveSpec.GravityAffected = true;
 					if (Hero->dY && Entity->OnGround)
 					{
 						Entity->dP.y = Hero->dY;
@@ -418,11 +515,34 @@ UpdateAndRenderEntities(sim_region *SimRegion, graphics_assets *Assets, hero_con
 						world_position NewWorldP = MapIntoChunkSpace(SimRegion->World, OldWorldP, Entity->FacingDir);
 						world_chunk *Chunk = GetWorldChunk(SimRegion->World, NewWorldP.ChunkX, NewWorldP.ChunkY, NewWorldP.ChunkZ);
 						Assert(Chunk);
-						v3 BlockP;
 						SetBlockActive(SimRegion->World, Chunk, NewWorldP, false);
 					}
-					MoveEntity(SimRegion, Entity, DeltaTime, ddP, 10.0f);
+					if (Hero->Fireball)
+					{
+						sim_entity *Fireball = Entity->Fireball.SimPtr;
+						if (Fireball && Fireball->NonSpatial)
+						{
+							Fireball->DistanceLimit = 15.0f;
+							Fireball->NonSpatial = false;
+							Fireball->P = Entity->P;
+							Fireball->dP = Entity->dP + 10.0f*Entity->FacingDir;
+						}
+					}
 				} break;
+				case EntityType_Fireball:
+				{
+					if (Entity->DistanceLimit == 0.0f)
+					{
+						Entity->NonSpatial = true;
+						// TODO(georgy): Formulate this!
+						Entity->P = V3(TILE_CHUNK_SAFE_MARGIN, TILE_CHUNK_SAFE_MARGIN, TILE_CHUNK_SAFE_MARGIN);
+					}
+				} break;
+			}
+
+			if(!Entity->NonSpatial && Entity->Moveable)
+			{
+				MoveEntity(SimRegion, Entity, DeltaTime, &MoveSpec);
 			}
 
 			if(Assets->EntityModels[Entity->Type])
@@ -434,6 +554,10 @@ UpdateAndRenderEntities(sim_region *SimRegion, graphics_assets *Assets, hero_con
 					{
 						ModelMatrix = Scale(0.11f);
 						ModelMatrix = ModelMatrix * Rotate(Hero->Rot + 180.0f, V3(0.0f, 1.0f, 0.0f));
+					} break;
+					case EntityType_Fireball:
+					{
+						ModelMatrix = Scale(0.05f);
 					} break;
 					case EntityType_Tree:
 					{

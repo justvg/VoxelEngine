@@ -6,6 +6,7 @@ enum entity_type
 
 	EntityType_Hero,
 	EntityType_Tree,
+	EntityType_Fireball,
 
 	EntityType_Count
 };
@@ -37,6 +38,7 @@ InitializeGameAssets(stack_allocator *Allocator, memory_size Size)
 
 	Assets->Infos[EntityType_Hero].Filename = "data/models/Knight.qb";
 	Assets->Infos[EntityType_Tree].Filename = "data/models/tree1.qb";
+	Assets->Infos[EntityType_Fireball].Filename = "data/models/Knight.qb";
 
 	return(Assets);
 }
@@ -210,7 +212,7 @@ LoadQubicleBinary(mesh *Mesh, char *Filename)
 		DataPointer += sizeof(int32);
 
 		uint32 Data;
-		v3 ModelDimensions = V3(MatrixData.SizeX, MatrixData.SizeY, MatrixData.SizeZ);
+		v3 ModelDimensions = V3((real32)MatrixData.SizeX, (real32)MatrixData.SizeY, (real32)MatrixData.SizeZ);
 		if(Header->Compression == 0)
 		{
 			for(uint32 Z = 0; Z < MatrixData.SizeZ; Z++)

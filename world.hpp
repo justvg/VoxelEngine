@@ -135,6 +135,13 @@ struct ray_sample
 	occlusion_ray Rays[RAY_COUNT];	
 };
 
+struct sim_entity;
+struct entity_reference
+{
+	uint32 LowIndex;
+	sim_entity *SimPtr;
+};
+
 struct sim_entity
 {
 	uint32 StorageIndex;
@@ -143,8 +150,14 @@ struct sim_entity
 	// NOTE(georgy): Now col. volume center is the center of the entity
 	v3 Dim;
 
+	entity_reference Fireball;
+
+	bool32 NonSpatial;
+	bool32 Moveable;
 	bool32 Updatable;
 	bool32 OnGround;
+
+	real32 DistanceLimit;
 
 	v3 P;
 	v3 dP;
@@ -850,8 +863,6 @@ CanAddTree(world_chunk *Chunk, uint32 X, uint32 Y, uint32 Z)
 	return(Result);
 }
 
-internal low_entity * 
-AddLowEntity(world *World, stack_allocator *WorldAllocator, entity_type Type, world_position P);
 struct setup_chunk_data
 {
 	world *World;

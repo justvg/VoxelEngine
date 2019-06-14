@@ -135,6 +135,7 @@ ProcessInput(game_input *Input, camera *Camera, hero_control *Hero, real32 Delta
 	}
 
 	Hero->Attack = Input->MouseLeft;
+	Hero->Fireball = Input->MouseRight;
 }
 
 int main(void)
@@ -231,7 +232,7 @@ int main(void)
 	GLuint CrosshairTexture = LoadTexture("data/textures/crosshair.tga");
 
 	TestShader2D.Enable();
-	mat4 Orthographic = Ortho(Height, 0, 0, Width, -1.0f, 1.0f);
+	mat4 Orthographic = Ortho((real32)Height, 0.0f, 0.0f, (real32)Width, -1.0f, 1.0f);
 	glUniformMatrix4fv(glGetUniformLocation(TestShader2D.ID, "Projection"), 1, GL_FALSE, Orthographic.Elements);
 	glUniform1i(glGetUniformLocation(TestShader2D.ID, "Texture"), 0);
 
@@ -239,8 +240,11 @@ int main(void)
 	mat4 Projection = Perspective(45.0f, (real32)Width / (real32)Height, 0.1f, 100.0f);
 	glUniformMatrix4fv(glGetUniformLocation(TestShader.ID, "Projection"), 1, GL_FALSE, Projection.Elements);
 
+	// NOTE(georgy): Reserve entity slot 0
+	AddLowEntity(World, &Game.WorldAllocator, EntityType_Null, InvalidPosition(), V3(0.0f, 0.0f, 0.0f));
+
 	world_position TestHeroPosition = {10004, 1, 10002, V3(0.0f, 0.25f, 0.0f)};
-	Game.Hero = AddLowEntity(World, &Game.WorldAllocator, EntityType_Hero, TestHeroPosition, V3(1.0f, 1.0f, 1.0f));
+	Game.Hero = AddHero(World, &Game.WorldAllocator, TestHeroPosition, V3(1.0f, 1.0f, 1.0f));
 
 	real32 DeltaTime = TargetSecondsForFrame;
 	real32 LastFrame = (real32)glfwGetTime();
