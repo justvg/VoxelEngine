@@ -281,32 +281,48 @@ LoadAsset(graphics_assets *Assets, entity_type Type)
 #endif
 }
 
+internal void
+GetBlockIndicesAndPos(world *World, world_chunk *Chunk, world_position WorldP, uint32 *X, uint32 *Y, uint32 *Z, v3 *BlockPos)
+{
+	*X = (uint32)((WorldP.Offset.x / World->ChunkDimInMeters) * CHUNK_DIM);
+	*Y = (uint32)((WorldP.Offset.y / World->ChunkDimInMeters) * CHUNK_DIM);
+	*Z = (uint32)((WorldP.Offset.z / World->ChunkDimInMeters) * CHUNK_DIM);
+
+	BlockPos->x = Chunk->Translation.x + (*X*World->BlockDimInMeters + 0.5f*World->BlockDimInMeters);
+	BlockPos->y = Chunk->Translation.y + (*Y*World->BlockDimInMeters + 0.5f*World->BlockDimInMeters);
+	BlockPos->z = Chunk->Translation.z + (*Z*World->BlockDimInMeters + 0.5f*World->BlockDimInMeters);
+}
+
 internal bool32
 IsBlockActive(world *World, world_chunk *Chunk, world_position WorldP, v3 *BlockPos)
 {
-	uint32 X = (uint32)((WorldP.Offset.x / World->ChunkDimInMeters) * CHUNK_DIM);
-	uint32 Y = (uint32)((WorldP.Offset.y / World->ChunkDimInMeters) * CHUNK_DIM);
-	uint32 Z = (uint32)((WorldP.Offset.z / World->ChunkDimInMeters) * CHUNK_DIM);
+	uint32 X, Y, Z;
+	GetBlockIndicesAndPos(World, Chunk, WorldP, &X, &Y, &Z, BlockPos);
+	
 	bool32 Result = GetVoxel(Chunk->Blocks, X, Y, Z).Active;
-
-	BlockPos->x = Chunk->Translation.x + (X*World->BlockDimInMeters + 0.5f*World->BlockDimInMeters);
-	BlockPos->y = Chunk->Translation.y + (Y*World->BlockDimInMeters + 0.5f*World->BlockDimInMeters);
-	BlockPos->z = Chunk->Translation.z + (Z*World->BlockDimInMeters + 0.5f*World->BlockDimInMeters);
-
 	return(Result);
 }
 
 internal void
-SetBlockActive(world *World, world_chunk *Chunk, world_position WorldP, bool32 Active)
+SetBlockActive(block_particle_generator *BlockParticleGenerator, world *World, world_chunk *Chunk, world_position WorldP, bool32 Active)
 {
-	uint32 X = (uint32)((WorldP.Offset.x / World->ChunkDimInMeters) * CHUNK_DIM);
-	uint32 Y = (uint32)((WorldP.Offset.y / World->ChunkDimInMeters) * CHUNK_DIM);
-	uint32 Z = (uint32)((WorldP.Offset.z / World->ChunkDimInMeters) * CHUNK_DIM);
+	uint32 X, Y, Z;
+	v3 BlockPos;
+	GetBlockIndicesAndPos(World, Chunk, WorldP, &X, &Y, &Z, &BlockPos);
 
 	if(GetVoxel(Chunk->Blocks, X, Y, Z).Active != Active)
 	{
 		GetVoxel(Chunk->Blocks, X, Y, Z).Active = Active;
 		Chunk->IsModified = true;
+
+		if (!Active)
+		{
+			v3 Color = GetRGBColorFromUInt32(GetVoxel(Chunk->Colors, X, Y, Z));
+			AddParticle(BlockParticleGenerator, BlockPos, Color);
+			AddParticle(BlockParticleGenerator, BlockPos, Color);
+			AddParticle(BlockParticleGenerator, BlockPos, Color);
+			AddParticle(BlockParticleGenerator, BlockPos, Color);
+		}
 	}
 }
 
@@ -487,7 +503,8 @@ MoveEntity(sim_region *SimRegion, sim_entity *Entity, real32 DeltaTime, move_spe
 
 internal void
 UpdateAndRenderEntities(sim_region *SimRegion, graphics_assets *Assets, hero_control *Hero, 
-						real32 DeltaTime, GLuint Shader, mat4 *ViewRotation, v3 CameraOffsetFromHero)
+						real32 DeltaTime, GLuint Shader, mat4 *ViewRotation, v3 CameraOffsetFromHero,
+						block_particle_generator *BlockParticleGenerator)
 {
 	for(uint32 EntityIndex = 0; EntityIndex < SimRegion->EntityCount; EntityIndex++)
 	{
@@ -515,7 +532,7 @@ UpdateAndRenderEntities(sim_region *SimRegion, graphics_assets *Assets, hero_con
 						world_position NewWorldP = MapIntoChunkSpace(SimRegion->World, OldWorldP, Entity->FacingDir);
 						world_chunk *Chunk = GetWorldChunk(SimRegion->World, NewWorldP.ChunkX, NewWorldP.ChunkY, NewWorldP.ChunkZ);
 						Assert(Chunk);
-						SetBlockActive(SimRegion->World, Chunk, NewWorldP, false);
+						SetBlockActive(BlockParticleGenerator, SimRegion->World, Chunk, NewWorldP, false);
 					}
 					if (Hero->Fireball)
 					{

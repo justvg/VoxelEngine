@@ -138,6 +138,11 @@ SubMemory(stack_allocator *Result, stack_allocator *Allocator, memory_size Size)
 #include "job_system.hpp"
 #include <math.h>
 #include "vec.hpp"
+#include "maths.hpp"
+#include "mat.hpp"
+#include "utils.hpp"
+#include "shader.hpp"
+#include "block_particle_generator.hpp"
 
 struct hero_control
 {
@@ -150,10 +155,6 @@ struct hero_control
 	real32 Rot;
 };
 
-#include "utils.hpp"
-#include "maths.hpp"
-#include "mat.hpp"
-#include "shader.hpp"
 #include "sound_manager.hpp"
 #include "qubicle_binary_loader.hpp"
 #include "world.hpp"
@@ -247,4 +248,6 @@ struct game
 
 	low_entity *Hero;
 	hero_control HeroControl;
+
+	block_particle_generator BlockParticleGenerator;
 };

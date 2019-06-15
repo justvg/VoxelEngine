@@ -3,6 +3,8 @@
 struct shader
 {
 	GLuint ID;
+
+	shader(){};
 	shader(const char *VertexPath, const char *FragmentPath, const char *GeometryPath = 0);
 
 	void Enable();

@@ -209,6 +209,9 @@ int main(void)
 
 	shader TestShader("shaders/vertex.vert", "shaders/fragment.frag");
 	shader TestShader2D("shaders/2d.vert", "shaders/2d.frag");
+	shader BlockParticleShader("shaders/block_particle.vert", "shaders/block_particle.frag");
+
+	InitializeBlockParticleGenerator(&Game.BlockParticleGenerator, BlockParticleShader);
 
 	real32 TestCrosshairVertices[] =
 	{
@@ -239,6 +242,9 @@ int main(void)
 	TestShader.Enable();
 	mat4 Projection = Perspective(45.0f, (real32)Width / (real32)Height, 0.1f, 100.0f);
 	glUniformMatrix4fv(glGetUniformLocation(TestShader.ID, "Projection"), 1, GL_FALSE, Projection.Elements);
+
+	BlockParticleShader.Enable();
+	glUniformMatrix4fv(glGetUniformLocation(BlockParticleShader.ID, "Projection"), 1, GL_FALSE, Projection.Elements);
 
 	// NOTE(georgy): Reserve entity slot 0
 	AddLowEntity(World, &Game.WorldAllocator, EntityType_Null, InvalidPosition(), V3(0.0f, 0.0f, 0.0f));
@@ -272,10 +278,14 @@ int main(void)
 		mat4 ViewRotation = RotationMatrixFromDirectionVector(Normalize(-Camera->OffsetFromHero));
 		RenderChunks(World, TestShader.ID, &ViewRotation, &Projection, -Camera->OffsetFromHero);
 
-		UpdateAndRenderEntities(SimRegion, Game.Assets, &Game.HeroControl, DeltaTime, TestShader.ID, &ViewRotation, -Camera->OffsetFromHero);
+		UpdateAndRenderEntities(SimRegion, Game.Assets, &Game.HeroControl, DeltaTime, TestShader.ID, &ViewRotation, -Camera->OffsetFromHero,
+								&Game.BlockParticleGenerator);
 
 		EndSimulation(SimRegion, World, &Game.WorldAllocator);
 		EndTemporaryMemory(TempSimMemory);
+
+		UpdateParticleGenerator(&Game.BlockParticleGenerator, DeltaTime);
+		DrawParticles(&Game.BlockParticleGenerator, &ViewRotation, -Camera->OffsetFromHero);
 
 		TestShader2D.Enable();
 		glDisable(GL_DEPTH_TEST);
