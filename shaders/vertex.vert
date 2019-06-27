@@ -7,7 +7,7 @@ layout (location = 3) in float aOcclusion;
 
 out vec3 Color;
 out vec3 Normal;
-out vec3 LightDir;
+out vec3 inLightDir;
 out vec3 FragPosView;
 out float Occlusion;
 
@@ -21,8 +21,8 @@ void main()
 {
 	vec4 Temp = View * Model * vec4(aPosition, 1.0);
 	FragPosView = vec3(Temp);
-	Normal = mat3(View * Model) * aNormal;
-	LightDir = mat3(View * Model) * DirectionalLightDir;
+	Normal = normalize(mat3(View * Model) * aNormal);
+	inLightDir = normalize(mat3(View) * DirectionalLightDir);
 	Color = aColor;
 	Occlusion = aOcclusion;
 

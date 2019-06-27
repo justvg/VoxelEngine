@@ -83,23 +83,29 @@ struct world_entity_block
 	world_entity_block *Next;
 };
 
-// TODO(georgy): Decide how to free chunks that haven't been used for a while;
-//				 From chunk we should free Blocks, VertexBuffer, VBO & VAO;
-//				 Maintain all loaded chunks and then once in some amount of time iterate over them and free that we don't need??
-//               Blocks can be freed using FirstFreeBlocks pointer;
-//               The contents of VertexBuffer can be freed using trick vector<block_vertex>().swap(VertexBuffer);
-//			     To free VBO & VAO use glDeleteBuffer and so on;
-//               Don't forget to unset IsSetup, IsLoaded!
+struct chunk_data
+{
+	block Blocks[CHUNK_DIM*CHUNK_DIM*CHUNK_DIM];
+	uint32 Colors[CHUNK_DIM*CHUNK_DIM*CHUNK_DIM];
+	block_type BlockTypes[CHUNK_DIM*CHUNK_DIM*CHUNK_DIM];
+	occlusion Occlusions[CHUNK_DIM*CHUNK_DIM*CHUNK_DIM];
+
+	chunk_data *Next;
+};
 struct world_chunk
 {
 	int32 ChunkX;
 	int32 ChunkY;
 	int32 ChunkZ;
-
+	
+#if 0
 	block *Blocks;
 	uint32 *Colors;
 	block_type *BlockTypes;
 	occlusion *Occlusions;
+#else
+	chunk_data *ChunkData;
+#endif
 	std::vector<block_vertex> *VertexBuffer;
 
 	bool32 IsSetup;
@@ -118,6 +124,8 @@ struct world_chunk
 	world_chunk *NextChunkSetup;
 	world_chunk *NextChunkLoad;
 	world_chunk *NextChunkUpdate;
+	
+	world_chunk *NextChunkUsed;
 };
 
 #define RAY_COUNT 16
@@ -187,11 +195,14 @@ struct world
 
 	// NOTE(georgy): Must be a power of two!
 	world_chunk *ChunkHash[4096];
+	world_chunk *RecentlyUsedChunksList;
 
 	uint32 LowEntityCount;
 	low_entity LowEntities[10000];
 
 	world_entity_block *FirstFreeEntityBlock;
+	
+	chunk_data *FirstFreeChunkData;
 };
 
 internal void
@@ -291,8 +302,6 @@ InitializeWorld(world *World)
 	World->ChunkDimInMeters = CHUNK_DIM / 2.0f;
 	//World->ChunkDimInMeters = CHUNK_DIM;
 	World->BlockDimInMeters = World->ChunkDimInMeters / CHUNK_DIM;
-	World->LowEntityCount = 0;
-	World->FirstFreeEntityBlock = 0;
 	InitBiomes(World);
 }
 
@@ -546,6 +555,65 @@ LoadChunks(world *World)
 	}
 }
 
+internal void
+UnloadChunk(world *World, world_chunk *Chunk) 
+{
+	Chunk->IsSetup = false;
+	Chunk->IsLoaded = false;
+	
+	chunk_data *ChunkData = Chunk->ChunkData;
+	ZeroMemory(ChunkData, sizeof(ChunkData->Blocks) + sizeof(ChunkData->Colors) + sizeof(ChunkData->BlockTypes) + sizeof(ChunkData->Occlusions));
+	ChunkData->Next = World->FirstFreeChunkData;
+	World->FirstFreeChunkData = ChunkData;
+	std::vector<block_vertex>().swap(*Chunk->VertexBuffer);
+	glDeleteBuffers(1, &Chunk->VBO);
+	glDeleteVertexArrays(1, &Chunk->VAO);
+}
+
+internal void
+UnloadChunks(world *World, world_position MinChunkP, world_position MaxChunkP)
+{
+	world_chunk **ChunkPtr = &World->RecentlyUsedChunksList;
+	world_chunk *Chunk = *ChunkPtr;
+	while(Chunk)
+	{
+		if(Chunk->ChunkX < (MinChunkP.ChunkX - 1) ||
+		   Chunk->ChunkY < (MinChunkP.ChunkY - 1) ||
+		   Chunk->ChunkZ < (MinChunkP.ChunkZ - 1) ||
+		   Chunk->ChunkX > (MaxChunkP.ChunkX + 1) ||
+		   Chunk->ChunkY > (MaxChunkP.ChunkY + 1) ||
+		   Chunk->ChunkZ > (MaxChunkP.ChunkZ + 1))
+		{
+			UnloadChunk(World, Chunk);
+
+			*ChunkPtr = Chunk->NextChunkUsed;
+		}
+		else
+		{
+			ChunkPtr = &Chunk->NextChunkUsed;
+		}
+		Chunk = *ChunkPtr;
+	}
+}
+
+internal bool32
+IsRecentlyUsed(world_chunk *UsedChunks, world_chunk *ChunkToTest)
+{
+	bool32 Result = false;
+	for(world_chunk *Chunk = UsedChunks; Chunk; Chunk = Chunk->NextChunkUsed)
+	{
+		if(Chunk->ChunkX == ChunkToTest->ChunkX && 
+		   Chunk->ChunkY == ChunkToTest->ChunkY &&
+		   Chunk->ChunkZ == ChunkToTest->ChunkZ)
+		{
+			Result = true;
+			break;
+		}
+	}
+
+	return(Result);
+}
+
 internal world_chunk *
 SortedMerge(world_chunk *A, world_chunk *B)
 {
@@ -744,7 +812,9 @@ GetWorldChunk(world *World, int32 ChunkX, int32 ChunkY, int32 ChunkZ, stack_allo
 internal void
 GenerateChunkVertices(world *World, world_chunk *Chunk, real32 BlockDimInMeters)
 {
-	block *Blocks = Chunk->Blocks;
+	block *Blocks = Chunk->ChunkData->Blocks;
+	uint32 *Colors = Chunk->ChunkData->Colors;
+	occlusion *Occlusions = Chunk->ChunkData->Occlusions;
 	for (uint32 ZI = 0; ZI < CHUNK_DIM; ZI++)
 	{
 		for (uint32 YI = 0; YI < CHUNK_DIM; YI++)
@@ -758,7 +828,7 @@ GenerateChunkVertices(world *World, world_chunk *Chunk, real32 BlockDimInMeters)
 					real32 Z = BlockDimInMeters*((real32)ZI);
 					block_vertex A, B, C, D;
 
-					v3 Color = GetRGBColorFromUInt32(GetVoxel(Chunk->Colors, XI, YI, ZI));
+					v3 Color = GetRGBColorFromUInt32(GetVoxel(Colors, XI, YI, ZI));
 					A.Color = B.Color = C.Color = D.Color = Color;
 
 					if ((XI == 0) || !GetVoxel(Blocks, XI - 1, YI, ZI).Active)
@@ -768,7 +838,7 @@ GenerateChunkVertices(world *World, world_chunk *Chunk, real32 BlockDimInMeters)
 						C.Pos = V3(X, Y + BlockDimInMeters, Z);
 						D.Pos = V3(X, Y + BlockDimInMeters, Z + BlockDimInMeters);
 						A.Normal = B.Normal = C.Normal = D.Normal = V3(-1.0f, 0.0f, 0.0f);
-						real32 ThisFaceRayContribution = GetVoxel(Chunk->Occlusions, XI, YI, ZI).Left;
+						real32 ThisFaceRayContribution = GetVoxel(Occlusions, XI, YI, ZI).Left;
 						ThisFaceRayContribution /= World->RaySample.Left;
 						A.Occlusion = B.Occlusion = C.Occlusion = D.Occlusion = ThisFaceRayContribution;
 						AddQuad(Chunk->VertexBuffer, &A, &B, &C, &D);
@@ -781,7 +851,7 @@ GenerateChunkVertices(world *World, world_chunk *Chunk, real32 BlockDimInMeters)
 						C.Pos = V3(X + BlockDimInMeters, Y, Z + BlockDimInMeters);
 						D.Pos = V3(X + BlockDimInMeters, Y + BlockDimInMeters, Z + BlockDimInMeters);
 						A.Normal = B.Normal = C.Normal = D.Normal = V3(1.0f, 0.0f, 0.0f);
-						real32 ThisFaceRayContribution = GetVoxel(Chunk->Occlusions, XI, YI, ZI).Right;
+						real32 ThisFaceRayContribution = GetVoxel(Occlusions, XI, YI, ZI).Right;
 						ThisFaceRayContribution /= World->RaySample.Right;
 						A.Occlusion = B.Occlusion = C.Occlusion = D.Occlusion = ThisFaceRayContribution;
 						AddQuad(Chunk->VertexBuffer, &A, &B, &C, &D);
@@ -794,7 +864,7 @@ GenerateChunkVertices(world *World, world_chunk *Chunk, real32 BlockDimInMeters)
 						C.Pos = V3(X + BlockDimInMeters, Y, Z);
 						D.Pos = V3(X + BlockDimInMeters, Y + BlockDimInMeters, Z);
 						A.Normal = B.Normal = C.Normal = D.Normal = V3(0.0f, 0.0f, -1.0f);
-						real32 ThisFaceRayContribution = GetVoxel(Chunk->Occlusions, XI, YI, ZI).Back;
+						real32 ThisFaceRayContribution = GetVoxel(Occlusions, XI, YI, ZI).Back;
 						ThisFaceRayContribution /= World->RaySample.Back;
 						A.Occlusion = B.Occlusion = C.Occlusion = D.Occlusion = ThisFaceRayContribution;
 						AddQuad(Chunk->VertexBuffer, &A, &B, &C, &D);
@@ -807,7 +877,7 @@ GenerateChunkVertices(world *World, world_chunk *Chunk, real32 BlockDimInMeters)
 						C.Pos = V3(X, Y + BlockDimInMeters, Z + BlockDimInMeters);
 						D.Pos = V3(X + BlockDimInMeters, Y + BlockDimInMeters, Z + BlockDimInMeters);
 						A.Normal = B.Normal = C.Normal = D.Normal = V3(0.0f, 0.0f, 1.0f);
-						real32 ThisFaceRayContribution = GetVoxel(Chunk->Occlusions, XI, YI, ZI).Front;
+						real32 ThisFaceRayContribution = GetVoxel(Occlusions, XI, YI, ZI).Front;
 						ThisFaceRayContribution /= World->RaySample.Front;
 						A.Occlusion = B.Occlusion = C.Occlusion = D.Occlusion = ThisFaceRayContribution;
 						AddQuad(Chunk->VertexBuffer, &A, &B, &C, &D);
@@ -820,7 +890,7 @@ GenerateChunkVertices(world *World, world_chunk *Chunk, real32 BlockDimInMeters)
 						C.Pos = V3(X, Y, Z + BlockDimInMeters);
 						D.Pos = V3(X + BlockDimInMeters, Y, Z + BlockDimInMeters);
 						A.Normal = B.Normal = C.Normal = D.Normal = V3(0.0f, -1.0f, 0.0f);
-						real32 ThisFaceRayContribution = GetVoxel(Chunk->Occlusions, XI, YI, ZI).Bottom;
+						real32 ThisFaceRayContribution = GetVoxel(Occlusions, XI, YI, ZI).Bottom;
 						ThisFaceRayContribution /= World->RaySample.Bottom;
 						A.Occlusion = B.Occlusion = C.Occlusion = D.Occlusion = ThisFaceRayContribution;
 						AddQuad(Chunk->VertexBuffer, &A, &B, &C, &D);
@@ -833,7 +903,7 @@ GenerateChunkVertices(world *World, world_chunk *Chunk, real32 BlockDimInMeters)
 						C.Pos = V3(X + BlockDimInMeters, Y + BlockDimInMeters, Z);
 						D.Pos = V3(X + BlockDimInMeters, Y + BlockDimInMeters, Z + BlockDimInMeters);
 						A.Normal = B.Normal = C.Normal = D.Normal = V3(0.0f, 1.0f, 0.0f);
-						real32 ThisFaceRayContribution = GetVoxel(Chunk->Occlusions, XI, YI, ZI).Top;
+						real32 ThisFaceRayContribution = GetVoxel(Occlusions, XI, YI, ZI).Top;
 						ThisFaceRayContribution /= World->RaySample.Top;
 						A.Occlusion = B.Occlusion = C.Occlusion = D.Occlusion = ThisFaceRayContribution;
 						AddQuad(Chunk->VertexBuffer, &A, &B, &C, &D);
@@ -852,15 +922,33 @@ CanAddTree(world_chunk *Chunk, uint32 X, uint32 Y, uint32 Z)
 	Result = (Y >= 4) && (Y <= 10) && Result;
 	if (Result)
 	{
-		Result = GetVoxel(Chunk->Blocks, X, Y - 1, Z).Active && Result;
-		Result = !GetVoxel(Chunk->Blocks, X, Y + 1, Z).Active && Result;
-		Result = !GetVoxel(Chunk->Blocks, X, Y + 2, Z).Active && Result;
-		Result = !GetVoxel(Chunk->Blocks, X, Y + 3, Z).Active && Result;
-		Result = !GetVoxel(Chunk->Blocks, X, Y + 4, Z).Active && Result;
-		Result = !GetVoxel(Chunk->Blocks, X, Y + 5, Z).Active && Result;
+		Result = GetVoxel(Chunk->ChunkData->Blocks, X, Y - 1, Z).Active && Result;
+		Result = !GetVoxel(Chunk->ChunkData->Blocks, X, Y + 1, Z).Active && Result;
+		Result = !GetVoxel(Chunk->ChunkData->Blocks, X, Y + 2, Z).Active && Result;
+		Result = !GetVoxel(Chunk->ChunkData->Blocks, X, Y + 3, Z).Active && Result;
+		Result = !GetVoxel(Chunk->ChunkData->Blocks, X, Y + 4, Z).Active && Result;
+		Result = !GetVoxel(Chunk->ChunkData->Blocks, X, Y + 5, Z).Active && Result;
 	}
 
 	return(Result);
+}
+
+inline void
+GetChunkData(world *World, world_chunk *Chunk, stack_allocator *WorldAllocator, HANDLE Semaphore)
+{
+	WaitForSingleObjectEx(Semaphore, INFINITE, false);
+
+	if (World->FirstFreeChunkData)
+	{
+		Chunk->ChunkData = World->FirstFreeChunkData;
+		World->FirstFreeChunkData = World->FirstFreeChunkData->Next;
+	}
+	else
+	{
+		Chunk->ChunkData = PushStruct(WorldAllocator, chunk_data);
+	}
+
+	ReleaseSemaphore(Semaphore, 1, 0);
 }
 
 struct setup_chunk_data
@@ -880,11 +968,8 @@ SetupChunk(void *Data)
 	HANDLE WorldAllocatorSemaphore = Work->WorldAllocatorSemaphore;
 	// Chunk->FirstBlock.LowEntityCount = 0;
 	Chunk->IsNotEmpty = false;
-	Chunk->Blocks = PushArraySynchronized(WorldAllocator, CHUNK_DIM*CHUNK_DIM*CHUNK_DIM, block, WorldAllocatorSemaphore);
-	Chunk->Colors = PushArraySynchronized(WorldAllocator, CHUNK_DIM*CHUNK_DIM*CHUNK_DIM, uint32, WorldAllocatorSemaphore);
-	Chunk->BlockTypes = PushArraySynchronized(WorldAllocator, CHUNK_DIM*CHUNK_DIM*CHUNK_DIM, block_type, WorldAllocatorSemaphore);
-	Chunk->Occlusions = PushArraySynchronized(WorldAllocator, CHUNK_DIM*CHUNK_DIM*CHUNK_DIM, occlusion, WorldAllocatorSemaphore);
-	block *Blocks = Chunk->Blocks;
+	GetChunkData(World, Chunk, WorldAllocator, WorldAllocatorSemaphore);
+	block *Blocks = Chunk->ChunkData->Blocks;
 	real32 BlockDimInMeters = World->BlockDimInMeters;
 	real32 MaxDistanceInY = World->ChunkDimInMeters * 4; // NOTE(georgy): Max chunks in Y = 4, not counting chunks with Y < 0
 
@@ -956,8 +1041,8 @@ SetupChunk(void *Data)
 					real32 r, g, b;
 					block_type BlockType;
 					GetColorAndBlockType(World, fY, ColorNoise, &r, &g, &b, &BlockType);
-					GetVoxel(Chunk->BlockTypes, X, Y, Z) = BlockType;
-					GetVoxel(Chunk->Colors, X, Y, Z) = GetUInt32Color(r, g, b);
+					GetVoxel(Chunk->ChunkData->BlockTypes, X, Y, Z) = BlockType;
+					GetVoxel(Chunk->ChunkData->Colors, X, Y, Z) = GetUInt32Color(r, g, b);
 
 					for (uint32 RayIndex = 0; RayIndex < RAY_COUNT; RayIndex++)
 					{
@@ -981,12 +1066,12 @@ SetupChunk(void *Data)
 						}
 						if (!Collided)
 						{
-							GetVoxel(Chunk->Occlusions, X, Y, Z).Left += World->RaySample.Rays[RayIndex].Left;
-							GetVoxel(Chunk->Occlusions, X, Y, Z).Right += World->RaySample.Rays[RayIndex].Right;
-							GetVoxel(Chunk->Occlusions, X, Y, Z).Top += World->RaySample.Rays[RayIndex].Top;
-							GetVoxel(Chunk->Occlusions, X, Y, Z).Bottom += World->RaySample.Rays[RayIndex].Bottom;
-							GetVoxel(Chunk->Occlusions, X, Y, Z).Front += World->RaySample.Rays[RayIndex].Front;
-							GetVoxel(Chunk->Occlusions, X, Y, Z).Back += World->RaySample.Rays[RayIndex].Back;
+							GetVoxel(Chunk->ChunkData->Occlusions, X, Y, Z).Left += World->RaySample.Rays[RayIndex].Left;
+							GetVoxel(Chunk->ChunkData->Occlusions, X, Y, Z).Right += World->RaySample.Rays[RayIndex].Right;
+							GetVoxel(Chunk->ChunkData->Occlusions, X, Y, Z).Top += World->RaySample.Rays[RayIndex].Top;
+							GetVoxel(Chunk->ChunkData->Occlusions, X, Y, Z).Bottom += World->RaySample.Rays[RayIndex].Bottom;
+							GetVoxel(Chunk->ChunkData->Occlusions, X, Y, Z).Front += World->RaySample.Rays[RayIndex].Front;
+							GetVoxel(Chunk->ChunkData->Occlusions, X, Y, Z).Back += World->RaySample.Rays[RayIndex].Back;
 						}
 					}
 				}
@@ -1041,10 +1126,12 @@ SetupChunks(job_system_queue *JobSystem, world *World, stack_allocator *WorldAll
 	CompleteAllWork(JobSystem);
 }
 
+// TODO(georgy): Should I use job system here? Maybe not because we don't update chunks often
+//				 If I want to use job system, I must relocate OpenGL calls from here
 internal void
 UpdateChunk(world *World, world_chunk *Chunk)
 {
-	block *Blocks = Chunk->Blocks;
+	block *Blocks = Chunk->ChunkData->Blocks;
 	Chunk->IsNotEmpty = false;
 	for (uint32 Z = 0; Z < CHUNK_DIM && !Chunk->IsNotEmpty; Z++)
 	{
@@ -1060,8 +1147,12 @@ UpdateChunk(world *World, world_chunk *Chunk)
 	Chunk->VertexBuffer->resize(0);
 	GenerateChunkVertices(World, Chunk, World->BlockDimInMeters);
 
+	glBindVertexArray(Chunk->VAO);
+	glBindBuffer(GL_ARRAY_BUFFER, Chunk->VBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(block_vertex)*Chunk->VertexBuffer->size(), &(*Chunk->VertexBuffer)[0], GL_STATIC_DRAW);
+	glBindVertexArray(0);
+
 	Chunk->IsModified = false;
-	Chunk->IsLoaded = false;
 }
 
 internal void

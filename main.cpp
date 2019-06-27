@@ -309,7 +309,7 @@ int main(void)
 #endif
 		LastFrame = (real32)glfwGetTime();
 
-		// std::cout << DeltaTime << std::endl;
+		std::cout << DeltaTime << std::endl;
 
 		glfwPollEvents();
 		glfwSwapBuffers(Window);

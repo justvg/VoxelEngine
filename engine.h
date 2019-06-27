@@ -30,6 +30,7 @@ typedef size_t memory_size;
 #define ArrayCount(Array) (sizeof(Array)/sizeof(Array[0]))
 
 #define global_variable static
+#define local_persist static
 #define internal static
 
 #define Kilobytes(Value) ((Value) * 1024LL)

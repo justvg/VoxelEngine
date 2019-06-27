@@ -10,7 +10,7 @@ struct block_particle
 struct block_particle_generator
 {
 	uint32 LastUsedParticle;
-	block_particle Particles[256];
+	block_particle Particles[512];
 
 	shader Shader;
 	GLuint VAO, VBO;
@@ -105,11 +105,13 @@ UnusedParticleIndex(block_particle_generator *Generator)
 		}
 	}
 
+	std::cout << "Too many block particles!" << std::endl;
+
 	Generator->LastUsedParticle = 0;
 	return(0);
 }
 
-internal void
+inline void
 AddParticle(block_particle_generator *Generator, v3 P, v3 Color)
 {
 	uint32 Index = UnusedParticleIndex(Generator);
@@ -118,9 +120,18 @@ AddParticle(block_particle_generator *Generator, v3 P, v3 Color)
 	Particle->P = P;
 	v3 MainDir = V3(0.0f, 1.0f, 0.0f);
 	v3 RandomDir = V3(((rand() % 200) - 100.0f) / 100.0f, ((rand() % 200) - 100.0f) / 100.0f, ((rand() % 200) - 100.0f) / 100.0f);
-	Particle->dP = 2.0f*(MainDir + RandomDir);
+	Particle->dP = 2.5f*(MainDir + RandomDir);
 	Particle->Color = Color;
 	Particle->LifeTime = 1.0f;
+}
+
+internal void
+AddParticles(block_particle_generator *Generator, v3 P, v3 Color, uint32 Count)
+{
+	for (uint32 I = 0; I < Count; I++)
+	{
+		AddParticle(Generator, P, Color);
+	}
 }
 
 internal void

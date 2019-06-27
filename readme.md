@@ -12,14 +12,13 @@ The engine implements the following (and more):
 - Collision detection with chunks
 
 Features to add necessarily:
-- Unload chunk data that haven't been used for some time
 - Collision detection with entities (must be easy to add now)
 - Better world generation 
-- Chunk explosions
 - Entity AI
 
 ## Screenshot
 ![Screenshot](https://i.imgur.com/fLxbDih.png)
+![Screenshot](https://i.imgur.com/5QDUtTT.png)
 
 ## Some references
 https://handmadehero.org/

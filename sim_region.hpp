@@ -94,6 +94,8 @@ AddEntity(sim_region *SimRegion, low_entity *LowEntity, v3 SimSpaceP)
 internal sim_region *
 BeginSimulation(stack_allocator *Allocator, stack_allocator *WorldAllocator, world *World, world_position Origin, rect3 Bounds)
 {
+	local_persist uint32 TESTframenumber = 0;
+
 	uint32 MaxSetupChunksPerFrame = 4;
 	uint32 SetupChunksPerFrame = 0;
 
@@ -131,6 +133,12 @@ BeginSimulation(stack_allocator *Allocator, stack_allocator *WorldAllocator, wor
 				world_chunk *Chunk = GetWorldChunk(World, ChunkX, ChunkY, ChunkZ, WorldAllocator);
 				if (Chunk)
 				{
+					if(Chunk->IsSetup && !IsRecentlyUsed(World->RecentlyUsedChunksList, Chunk))
+					{
+						Chunk->NextChunkUsed = World->RecentlyUsedChunksList;
+						World->RecentlyUsedChunksList = Chunk;
+					}
+
 					if (!Chunk->IsSetup && (SetupChunksPerFrame < MaxSetupChunksPerFrame))
 					{
 						SetupChunksPerFrame++;
@@ -143,7 +151,7 @@ BeginSimulation(stack_allocator *Allocator, stack_allocator *WorldAllocator, wor
 						Chunk->NextChunkUpdate = World->ChunksUpdateList;
 						World->ChunksUpdateList = Chunk;
 					}
-					else if (Chunk->IsSetup && Chunk->IsNotEmpty && !Chunk->IsModified && !Chunk->IsLoaded && (LoadChunksPerFrame < MaxLoadChunksPerFrame))
+					else if (Chunk->IsSetup && Chunk->IsNotEmpty && !Chunk->IsLoaded && (LoadChunksPerFrame < MaxLoadChunksPerFrame))
 					{
 						LoadChunksPerFrame++;
 						Chunk->NextChunkLoad = World->ChunksLoadList;
@@ -186,6 +194,14 @@ BeginSimulation(stack_allocator *Allocator, stack_allocator *WorldAllocator, wor
 			}
 		}
 	}
+
+	TESTframenumber++;
+	if(TESTframenumber == 600)
+	{
+		TESTframenumber = 0;
+		UnloadChunks(World, MinChunkP, MaxChunkP);
+	}
+
 
 	return(SimRegion);
 }
@@ -299,7 +315,7 @@ IsBlockActive(world *World, world_chunk *Chunk, world_position WorldP, v3 *Block
 	uint32 X, Y, Z;
 	GetBlockIndicesAndPos(World, Chunk, WorldP, &X, &Y, &Z, BlockPos);
 	
-	bool32 Result = GetVoxel(Chunk->Blocks, X, Y, Z).Active;
+	bool32 Result = GetVoxel(Chunk->ChunkData->Blocks, X, Y, Z).Active;
 	return(Result);
 }
 
@@ -310,20 +326,25 @@ SetBlockActive(block_particle_generator *BlockParticleGenerator, world *World, w
 	v3 BlockPos;
 	GetBlockIndicesAndPos(World, Chunk, WorldP, &X, &Y, &Z, &BlockPos);
 
-	if(GetVoxel(Chunk->Blocks, X, Y, Z).Active != Active)
+	if(GetVoxel(Chunk->ChunkData->Blocks, X, Y, Z).Active != Active)
 	{
-		GetVoxel(Chunk->Blocks, X, Y, Z).Active = Active;
+		GetVoxel(Chunk->ChunkData->Blocks, X, Y, Z).Active = Active;
 		Chunk->IsModified = true;
 
 		if (!Active)
 		{
-			v3 Color = GetRGBColorFromUInt32(GetVoxel(Chunk->Colors, X, Y, Z));
-			AddParticle(BlockParticleGenerator, BlockPos, Color);
-			AddParticle(BlockParticleGenerator, BlockPos, Color);
-			AddParticle(BlockParticleGenerator, BlockPos, Color);
-			AddParticle(BlockParticleGenerator, BlockPos, Color);
+			v3 Color = GetRGBColorFromUInt32(GetVoxel(Chunk->ChunkData->Colors, X, Y, Z));
+			AddParticles(BlockParticleGenerator, BlockPos, Color, 4);
 		}
 	}
+}
+
+inline void
+MakeEntityNonSpatial(sim_entity *Entity)
+{
+	Entity->NonSpatial = true;
+	// TODO(georgy): Formulate this!
+	Entity->P = V3(TILE_CHUNK_SAFE_MARGIN, TILE_CHUNK_SAFE_MARGIN, TILE_CHUNK_SAFE_MARGIN);
 }
 
 internal bool32
@@ -359,9 +380,8 @@ struct move_spec
 	real32 Drag;
 	bool32 GravityAffected;
 };
-
 internal void
-MoveEntity(sim_region *SimRegion, sim_entity *Entity, real32 DeltaTime, move_spec *MoveSpec)
+MoveEntity(sim_region *SimRegion, block_particle_generator *BlockParticleGenerator, sim_entity *Entity, real32 DeltaTime, move_spec *MoveSpec)
 {
 	real32 ddPLength = LengthSq(MoveSpec->ddP);
 	if(ddPLength > 1.0f)
@@ -482,16 +502,39 @@ MoveEntity(sim_region *SimRegion, sim_entity *Entity, real32 DeltaTime, move_spe
 				}
 			}
 
-			Entity->P += tMin*EntityDelta;
+			v3 DistancePassed = tMin*EntityDelta;
+			Entity->P += DistancePassed;
 			DistanceRemaining -= tMin*EntityDeltaLength;
 			EntityDelta = DesiredPos - Entity->P;
 			if (Normal.x != 0 || Normal.z != 0 || Normal.y != 0)
 			{
+				// TODO(georgy): It is a test, make better collision detection!
+				if (Entity->Type == EntityType_Fireball)
+				{
+					MakeEntityNonSpatial(Entity);
+					for (int32 Z = -2; Z <= 2; Z++)
+					{
+						for (int32 Y = -2; Y <= 2; Y++)
+						{
+							for (int32 X = -2; X <= 2; X++)
+							{
+								v3 Offset = { DistancePassed.x + X*SimRegion->World->BlockDimInMeters, DistancePassed.y + Y*SimRegion->World->BlockDimInMeters, DistancePassed.z + Z*SimRegion->World->BlockDimInMeters };
+								world_position WorldP = MapIntoChunkSpace(SimRegion->World, OldWorldP, Offset);
+								world_chunk *Chunk = GetWorldChunk(SimRegion->World, WorldP.ChunkX, WorldP.ChunkY, WorldP.ChunkZ);
+								Assert(Chunk);
+								SetBlockActive(BlockParticleGenerator, SimRegion->World, Chunk, WorldP, false);
+							}
+						}
+					}
+
+					break;
+				}
+
 				Entity->dP = Entity->dP - Dot(Entity->dP, Normal)*Normal;
 				EntityDelta = EntityDelta - Dot(EntityDelta, Normal)*Normal;
 			}
 
-			OldWorldP = MapIntoChunkSpace(SimRegion->World, OldWorldP, tMin*EntityDelta);
+			OldWorldP = MapIntoChunkSpace(SimRegion->World, OldWorldP, DistancePassed);
 		}
 	}
 
@@ -550,16 +593,14 @@ UpdateAndRenderEntities(sim_region *SimRegion, graphics_assets *Assets, hero_con
 				{
 					if (Entity->DistanceLimit == 0.0f)
 					{
-						Entity->NonSpatial = true;
-						// TODO(georgy): Formulate this!
-						Entity->P = V3(TILE_CHUNK_SAFE_MARGIN, TILE_CHUNK_SAFE_MARGIN, TILE_CHUNK_SAFE_MARGIN);
+						MakeEntityNonSpatial(Entity);
 					}
 				} break;
 			}
 
 			if(!Entity->NonSpatial && Entity->Moveable)
 			{
-				MoveEntity(SimRegion, Entity, DeltaTime, &MoveSpec);
+				MoveEntity(SimRegion, BlockParticleGenerator, Entity, DeltaTime, &MoveSpec);
 			}
 
 			if(Assets->EntityModels[Entity->Type])

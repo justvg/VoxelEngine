@@ -4,7 +4,7 @@ out vec4 FragColor;
 
 in vec3 Color;
 in vec3 Normal;
-in vec3 LightDir;
+in vec3 inLightDir;
 in float Occlusion;
 in vec3 FragPosView;
 
@@ -21,7 +21,7 @@ void main()
 	//vec3 Ambient = 0.2 * Color * Occlusion;
 	vec3 Ambient = 0.2 * Color;
 
-	vec3 LightDir = normalize(-LightDir);
+	vec3 LightDir = normalize(-inLightDir);
 	vec3 Diffuse = max(dot(LightDir, Normal), 0.0) * Color;
 
 	vec3 ViewDir = normalize(-FragPosView);
