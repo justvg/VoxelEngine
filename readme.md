@@ -4,17 +4,18 @@
 
 The engine implements the following (and more):
 - Voxel engine with chunks 
+- Chunk explosions
 - View frustum culling for chunks
 - Entity system and simulation region
 - Job system
 - Simple math lib
 - Qubicle binary file loading
-- Collision detection with chunks
+- Collision detection
 
 Features to add necessarily:
-- Collision detection with entities (must be easy to add now)
 - Better world generation 
 - Entity AI
+- GUI
 
 ## Screenshot
 ![Screenshot](https://i.imgur.com/fLxbDih.png)

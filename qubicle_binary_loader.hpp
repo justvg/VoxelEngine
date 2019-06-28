@@ -4,6 +4,7 @@ enum entity_type
 {
 	EntityType_Null,
 
+	EntityType_Chunk, // NOTE(georgy): We can't create chunk entities, it is needed for collision detection, if we don't want make chunk an entity
 	EntityType_Hero,
 	EntityType_Tree,
 	EntityType_Fireball,

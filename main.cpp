@@ -38,7 +38,7 @@ GLFWMouseButtonCallback(GLFWwindow* Window, int Button, int Action, int Mods)
 	}
 	if (Button == GLFW_MOUSE_BUTTON_2)
 	{
-		Input->MouseRight = (Action != GLFW_RELEASE);
+		Input->MouseRight = (Action == GLFW_PRESS);
 	}
 }
 
@@ -136,6 +136,10 @@ ProcessInput(game_input *Input, camera *Camera, hero_control *Hero, real32 Delta
 
 	Hero->Attack = Input->MouseLeft;
 	Hero->Fireball = Input->MouseRight;
+	if(Input->MouseRight)
+	{
+		Input->MouseRight = false;
+	}
 }
 
 int main(void)
@@ -251,6 +255,8 @@ int main(void)
 
 	world_position TestHeroPosition = {10004, 1, 10002, V3(0.0f, 0.25f, 0.0f)};
 	Game.Hero = AddHero(World, &Game.WorldAllocator, TestHeroPosition, V3(1.0f, 1.0f, 1.0f));
+	world_position TestTreePos = { 10004, 0, 10002, V3(4.0f, 3.0f, 0.0f) };
+	AddTree(World, &Game.WorldAllocator, TestTreePos, V3(1.0f, 2.0f, 1.0f));
 
 	real32 DeltaTime = TargetSecondsForFrame;
 	real32 LastFrame = (real32)glfwGetTime();
@@ -307,6 +313,10 @@ int main(void)
 			DeltaTime = (real32)glfwGetTime() - LastFrame;
 		}
 #endif
+		if (DeltaTime > 1.0f)
+		{
+			DeltaTime = TargetSecondsForFrame;
+		}
 		LastFrame = (real32)glfwGetTime();
 
 		std::cout << DeltaTime << std::endl;

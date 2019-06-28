@@ -161,6 +161,7 @@ struct sim_entity
 	entity_reference Fireball;
 
 	bool32 NonSpatial;
+	bool32 Collides;
 	bool32 Moveable;
 	bool32 Updatable;
 	bool32 OnGround;
@@ -914,6 +915,7 @@ GenerateChunkVertices(world *World, world_chunk *Chunk, real32 BlockDimInMeters)
 	}
 }
 
+#if 0
 internal bool32
 CanAddTree(world_chunk *Chunk, uint32 X, uint32 Y, uint32 Z)
 {
@@ -932,6 +934,7 @@ CanAddTree(world_chunk *Chunk, uint32 X, uint32 Y, uint32 Z)
 
 	return(Result);
 }
+#endif
 
 inline void
 GetChunkData(world *World, world_chunk *Chunk, stack_allocator *WorldAllocator, HANDLE Semaphore)

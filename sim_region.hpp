@@ -373,6 +373,85 @@ TestWall(real32 WallX, real32 RelX, real32 RelZ, real32 RelY, real32 PlayerDelta
     return(Result);
 }
 
+internal bool32
+CanCollide(sim_entity *A, sim_entity *B)
+{
+	bool32 Result = false;
+
+	if (A != B)
+	{
+		if (A->Collides && B->Collides)
+		{
+			Result = true;
+		}
+
+		if (A->Type > B->Type)
+		{
+			sim_entity *Temp = A;
+			A = B;
+			B = Temp;
+		}
+
+		if(A->Type == EntityType_Hero && B->Type == EntityType_Fireball)
+		{
+			Result = false;
+		}
+	}
+
+	return(Result);
+}
+
+internal bool32 
+HandleCollision(sim_region *SimRegion, v3 DistancePassed, world_position *OldWorldP, block_particle_generator *BlockParticleGenerator,
+				sim_entity *EntityA, sim_entity *EntityB, entity_type A, entity_type B)
+{
+	bool32 Result = false;
+
+	if (A > B)
+	{
+		entity_type Temp = A;
+		A = B;
+		B = Temp;
+	}
+
+	if (A == EntityType_Chunk && B == EntityType_Fireball)
+	{
+		Assert(EntityA);
+		Assert(EntityA->Type == EntityType_Fireball);
+		MakeEntityNonSpatial(EntityA);
+		for (int32 Z = -2; Z <= 2; Z++)
+		{
+			for (int32 Y = -2; Y <= 2; Y++)
+			{
+				for (int32 X = -2; X <= 2; X++)
+				{
+					v3 Offset = { DistancePassed.x + X*SimRegion->World->BlockDimInMeters, DistancePassed.y + Y*SimRegion->World->BlockDimInMeters, DistancePassed.z + Z*SimRegion->World->BlockDimInMeters };
+					world_position WorldP = MapIntoChunkSpace(SimRegion->World, *OldWorldP, Offset);
+					world_chunk *Chunk = GetWorldChunk(SimRegion->World, WorldP.ChunkX, WorldP.ChunkY, WorldP.ChunkZ);
+					Assert(Chunk);
+					SetBlockActive(BlockParticleGenerator, SimRegion->World, Chunk, WorldP, false);
+				}
+			}
+		}
+	}
+	else if (A == EntityType_Tree && B == EntityType_Fireball)
+	{
+		Assert(EntityA);
+		Assert(EntityA->Type == EntityType_Fireball);
+		MakeEntityNonSpatial(EntityA);
+	}
+	else if (A == EntityType_Chunk && B == EntityType_Hero)
+	{
+		Result = true;
+	}
+	else if (A == EntityType_Hero && B == EntityType_Tree)
+	{
+		Result = true;
+	}
+
+	return(Result);
+}
+
 struct move_spec
 {
 	v3 ddP;
@@ -444,97 +523,160 @@ MoveEntity(sim_region *SimRegion, block_particle_generator *BlockParticleGenerat
 			}
 			v3 DesiredPos = Entity->P + EntityDelta;
 			v3 Normal = {};
-			for (int32 Z = -2; Z <= 2; Z++)
-			{
-				for (int32 Y = -2; Y <= 2; Y++)
+
+#if 0
+			sim_entity *HitEntity = 0; 
+#else
+			sim_entity *HitEntity = 0;
+			entity_type HitEntityType = EntityType_Null;
+#endif
+			if(!Entity->NonSpatial)
+			{ 
+				// NOTE(georgy): Chunk collision test. Should/Can I make chunk an entity? 
+				for (int32 Z = -2; Z <= 2; Z++)
 				{
-					for (int32 X = -2; X <= 2; X++)
+					for (int32 Y = -2; Y <= 2; Y++)
 					{
-						v3 Offset = { EntityDelta.x + X*SimRegion->World->BlockDimInMeters, EntityDelta.y + Y*SimRegion->World->BlockDimInMeters, EntityDelta.z + Z*SimRegion->World->BlockDimInMeters };
-						world_position NewWorldP = MapIntoChunkSpace(SimRegion->World, OldWorldP, Offset);
-						world_chunk *Chunk = GetWorldChunk(SimRegion->World, NewWorldP.ChunkX, NewWorldP.ChunkY, NewWorldP.ChunkZ);
-						Assert(Chunk);
-						v3 BlockP;
-						bool32 Active = IsBlockActive(SimRegion->World, Chunk, NewWorldP, &BlockP);
-						if(Active)
+						for (int32 X = -2; X <= 2; X++)
 						{
-							v3 MinkowskiDiameter = {SimRegion->World->BlockDimInMeters + Entity->Dim.x,
-													SimRegion->World->BlockDimInMeters + Entity->Dim.y,
-													SimRegion->World->BlockDimInMeters + Entity->Dim.z};
+							v3 Offset = { EntityDelta.x + X*SimRegion->World->BlockDimInMeters, 
+										  EntityDelta.y + Y*SimRegion->World->BlockDimInMeters, 
+										  EntityDelta.z + Z*SimRegion->World->BlockDimInMeters };
+							world_position NewWorldP = MapIntoChunkSpace(SimRegion->World, OldWorldP, Offset);
+							world_chunk *Chunk = GetWorldChunk(SimRegion->World, NewWorldP.ChunkX, NewWorldP.ChunkY, NewWorldP.ChunkZ);
+							Assert(Chunk);
+							v3 BlockP;
+							bool32 Active = IsBlockActive(SimRegion->World, Chunk, NewWorldP, &BlockP);
+							if(Active)
+							{
+								v3 MinkowskiDiameter = {SimRegion->World->BlockDimInMeters + Entity->Dim.x,
+														SimRegion->World->BlockDimInMeters + Entity->Dim.y,
+														SimRegion->World->BlockDimInMeters + Entity->Dim.z};
 
-							v3 MinCorner = -0.5f*MinkowskiDiameter;
-							v3 MaxCorner = 0.5f*MinkowskiDiameter;
+								v3 MinCorner = -0.5f*MinkowskiDiameter;
+								v3 MaxCorner = 0.5f*MinkowskiDiameter;
 
-							v3 RelPlayerP = Entity->P - BlockP;
+								v3 RelPlayerP = Entity->P - BlockP;
 
-							if(TestWall(MinCorner.x, RelPlayerP.x, RelPlayerP.z, RelPlayerP.y, EntityDelta.x, EntityDelta.z, EntityDelta.y, 
-								&tMin, MinCorner.x, MaxCorner.x, MinCorner.y, MaxCorner.y))
-							{
-								Normal = V3(-1.0f, 0.0f, 0.0f);
-							}
-							if(TestWall(MaxCorner.x, RelPlayerP.x, RelPlayerP.z, RelPlayerP.y, EntityDelta.x, EntityDelta.z, EntityDelta.y, 
-								&tMin, MinCorner.x, MaxCorner.x, MinCorner.y, MaxCorner.y))
-							{
-								Normal = V3(1.0f, 0.0f, 0.0f);
-							}
-							if(TestWall(MinCorner.z, RelPlayerP.z, RelPlayerP.x, RelPlayerP.y, EntityDelta.z, EntityDelta.x, EntityDelta.y,
-								&tMin, MinCorner.x, MaxCorner.x, MinCorner.y, MaxCorner.y))
-							{
-								Normal = V3(0.0f, 0.0f, -1.0f);
-							}
-							if(TestWall(MaxCorner.z, RelPlayerP.z, RelPlayerP.x, RelPlayerP.y, EntityDelta.z, EntityDelta.x, EntityDelta.y,
-								&tMin, MinCorner.x, MaxCorner.x, MinCorner.y, MaxCorner.y))
-							{
-								Normal = V3(0.0f, 0.0f, 1.0f);
-							}
-							if (TestWall(MinCorner.y, RelPlayerP.y, RelPlayerP.x, RelPlayerP.z, EntityDelta.y, EntityDelta.x, EntityDelta.z,
-								&tMin, MinCorner.x, MaxCorner.x, MinCorner.z, MaxCorner.z))
-							{
-								Normal = V3(0.0f, -1.0f, 0.0f);
-							}
-							if (TestWall(MaxCorner.y, RelPlayerP.y, RelPlayerP.x, RelPlayerP.z, EntityDelta.y, EntityDelta.x, EntityDelta.z,
-								&tMin, MinCorner.x, MaxCorner.x, MinCorner.z, MaxCorner.z))
-							{
-								Normal = V3(0.0f, 1.0f, 0.0f);
+								if(TestWall(MinCorner.x, RelPlayerP.x, RelPlayerP.z, RelPlayerP.y, EntityDelta.x, EntityDelta.z, EntityDelta.y, 
+									&tMin, MinCorner.x, MaxCorner.x, MinCorner.y, MaxCorner.y))
+								{
+									Normal = V3(-1.0f, 0.0f, 0.0f);
+									HitEntityType = EntityType_Chunk;
+								}
+								if(TestWall(MaxCorner.x, RelPlayerP.x, RelPlayerP.z, RelPlayerP.y, EntityDelta.x, EntityDelta.z, EntityDelta.y, 
+									&tMin, MinCorner.x, MaxCorner.x, MinCorner.y, MaxCorner.y))
+								{
+									Normal = V3(1.0f, 0.0f, 0.0f);
+									HitEntityType = EntityType_Chunk;
+								}
+								if(TestWall(MinCorner.z, RelPlayerP.z, RelPlayerP.x, RelPlayerP.y, EntityDelta.z, EntityDelta.x, EntityDelta.y,
+									&tMin, MinCorner.x, MaxCorner.x, MinCorner.y, MaxCorner.y))
+								{
+									Normal = V3(0.0f, 0.0f, -1.0f);
+									HitEntityType = EntityType_Chunk;
+								}
+								if(TestWall(MaxCorner.z, RelPlayerP.z, RelPlayerP.x, RelPlayerP.y, EntityDelta.z, EntityDelta.x, EntityDelta.y,
+									&tMin, MinCorner.x, MaxCorner.x, MinCorner.y, MaxCorner.y))
+								{
+									Normal = V3(0.0f, 0.0f, 1.0f);
+									HitEntityType = EntityType_Chunk;
+								}
+								if (TestWall(MinCorner.y, RelPlayerP.y, RelPlayerP.x, RelPlayerP.z, EntityDelta.y, EntityDelta.x, EntityDelta.z,
+									&tMin, MinCorner.x, MaxCorner.x, MinCorner.z, MaxCorner.z))
+								{
+									Normal = V3(0.0f, -1.0f, 0.0f);
+									HitEntityType = EntityType_Chunk;
+								}
+								if (TestWall(MaxCorner.y, RelPlayerP.y, RelPlayerP.x, RelPlayerP.z, EntityDelta.y, EntityDelta.x, EntityDelta.z,
+									&tMin, MinCorner.x, MaxCorner.x, MinCorner.z, MaxCorner.z))
+								{
+									Normal = V3(0.0f, 1.0f, 0.0f);
+									HitEntityType = EntityType_Chunk;
+								}
 							}
 						}
 					}
 				}
-			}
 
-			v3 DistancePassed = tMin*EntityDelta;
-			Entity->P += DistancePassed;
-			DistanceRemaining -= tMin*EntityDeltaLength;
-			EntityDelta = DesiredPos - Entity->P;
-			if (Normal.x != 0 || Normal.z != 0 || Normal.y != 0)
-			{
-				// TODO(georgy): It is a test, make better collision detection!
-				if (Entity->Type == EntityType_Fireball)
+				// NOTE(georgy): Entities collision
+				for (uint32 TestEntityIndex = 0; TestEntityIndex < SimRegion->EntityCount; TestEntityIndex++)
 				{
-					MakeEntityNonSpatial(Entity);
-					for (int32 Z = -2; Z <= 2; Z++)
+					sim_entity *TestEntity = SimRegion->Entities + TestEntityIndex;
+
+					if (CanCollide(Entity, TestEntity))
 					{
-						for (int32 Y = -2; Y <= 2; Y++)
+						v3 MinkowskiDiameter = { TestEntity->Dim.x + Entity->Dim.x,
+												 TestEntity->Dim.y + Entity->Dim.y,
+												 TestEntity->Dim.z + Entity->Dim.z };
+
+						v3 MinCorner = -0.5f*MinkowskiDiameter;
+						v3 MaxCorner = 0.5f*MinkowskiDiameter;
+
+						v3 RelPlayerP = Entity->P - TestEntity->P;
+
+						if (TestWall(MinCorner.x, RelPlayerP.x, RelPlayerP.z, RelPlayerP.y, EntityDelta.x, EntityDelta.z, EntityDelta.y,
+							&tMin, MinCorner.x, MaxCorner.x, MinCorner.y, MaxCorner.y))
 						{
-							for (int32 X = -2; X <= 2; X++)
-							{
-								v3 Offset = { DistancePassed.x + X*SimRegion->World->BlockDimInMeters, DistancePassed.y + Y*SimRegion->World->BlockDimInMeters, DistancePassed.z + Z*SimRegion->World->BlockDimInMeters };
-								world_position WorldP = MapIntoChunkSpace(SimRegion->World, OldWorldP, Offset);
-								world_chunk *Chunk = GetWorldChunk(SimRegion->World, WorldP.ChunkX, WorldP.ChunkY, WorldP.ChunkZ);
-								Assert(Chunk);
-								SetBlockActive(BlockParticleGenerator, SimRegion->World, Chunk, WorldP, false);
-							}
+							Normal = V3(-1.0f, 0.0f, 0.0f);
+							HitEntity = TestEntity;
+							HitEntityType = TestEntity->Type;
+						}
+						if (TestWall(MaxCorner.x, RelPlayerP.x, RelPlayerP.z, RelPlayerP.y, EntityDelta.x, EntityDelta.z, EntityDelta.y,
+							&tMin, MinCorner.x, MaxCorner.x, MinCorner.y, MaxCorner.y))
+						{
+							Normal = V3(1.0f, 0.0f, 0.0f);
+							HitEntity = TestEntity;
+							HitEntityType = TestEntity->Type;
+						}
+						if (TestWall(MinCorner.z, RelPlayerP.z, RelPlayerP.x, RelPlayerP.y, EntityDelta.z, EntityDelta.x, EntityDelta.y,
+							&tMin, MinCorner.x, MaxCorner.x, MinCorner.y, MaxCorner.y))
+						{
+							Normal = V3(0.0f, 0.0f, -1.0f);
+							HitEntity = TestEntity;
+							HitEntityType = TestEntity->Type;
+						}
+						if (TestWall(MaxCorner.z, RelPlayerP.z, RelPlayerP.x, RelPlayerP.y, EntityDelta.z, EntityDelta.x, EntityDelta.y,
+							&tMin, MinCorner.x, MaxCorner.x, MinCorner.y, MaxCorner.y))
+						{
+							Normal = V3(0.0f, 0.0f, 1.0f);
+							HitEntity = TestEntity;
+							HitEntityType = TestEntity->Type;
+						}
+						if (TestWall(MinCorner.y, RelPlayerP.y, RelPlayerP.x, RelPlayerP.z, EntityDelta.y, EntityDelta.x, EntityDelta.z,
+							&tMin, MinCorner.x, MaxCorner.x, MinCorner.z, MaxCorner.z))
+						{
+							Normal = V3(0.0f, -1.0f, 0.0f);
+							HitEntity = TestEntity;
+							HitEntityType = TestEntity->Type;
+						}
+						if (TestWall(MaxCorner.y, RelPlayerP.y, RelPlayerP.x, RelPlayerP.z, EntityDelta.y, EntityDelta.x, EntityDelta.z,
+							&tMin, MinCorner.x, MaxCorner.x, MinCorner.z, MaxCorner.z))
+						{
+							Normal = V3(0.0f, 1.0f, 0.0f);
+							HitEntity = TestEntity;
+							HitEntityType = TestEntity->Type;
 						}
 					}
-
-					break;
 				}
 
-				Entity->dP = Entity->dP - Dot(Entity->dP, Normal)*Normal;
-				EntityDelta = EntityDelta - Dot(EntityDelta, Normal)*Normal;
-			}
+				v3 DistancePassed = tMin*EntityDelta;
+				Entity->P += DistancePassed;
+				DistanceRemaining -= tMin*EntityDeltaLength;
+				EntityDelta = DesiredPos - Entity->P;
+				if(HitEntityType)
+				{
+					bool32 StopOnCollision = HandleCollision(SimRegion, DistancePassed, &OldWorldP, BlockParticleGenerator,
+															 Entity, HitEntity, Entity->Type, HitEntityType);
+					if (StopOnCollision)
+					{
+						Entity->dP = Entity->dP - Dot(Entity->dP, Normal)*Normal;
+						EntityDelta = EntityDelta - Dot(EntityDelta, Normal)*Normal;
+					}
+				}
 
-			OldWorldP = MapIntoChunkSpace(SimRegion->World, OldWorldP, DistancePassed);
+				OldWorldP = MapIntoChunkSpace(SimRegion->World, OldWorldP, DistancePassed);
+			}
 		}
 	}
 
@@ -619,7 +761,7 @@ UpdateAndRenderEntities(sim_region *SimRegion, graphics_assets *Assets, hero_con
 					} break;
 					case EntityType_Tree:
 					{
-						ModelMatrix = Translation(V3(0.0f, 1.3f, 0.0f));
+						ModelMatrix = Translation(V3(0.0f, 0.3f, 0.0f));
 						ModelMatrix = ModelMatrix * Scale(0.35f);
 					} break;
 				}

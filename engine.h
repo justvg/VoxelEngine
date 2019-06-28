@@ -189,10 +189,18 @@ AddLowEntity(world *World, stack_allocator *WorldAllocator, entity_type Type, wo
 	return(Result);
 }
 
+internal void 
+AddTree(world *World, stack_allocator *WorldAllocator, world_position P, v3 Dim)
+{
+	add_low_entity_result Entity = AddLowEntity(World, WorldAllocator, EntityType_Tree, P, Dim);
+	Entity.LowEntity->Sim.Collides = true;
+}
+
 internal uint32
 AddFireball(world *World, stack_allocator *WorldAllocator)
 {
 	add_low_entity_result Entity = AddLowEntity(World, WorldAllocator, EntityType_Fireball, InvalidPosition(), V3(0.3f, 0.3f, 0.3f));
+	Entity.LowEntity->Sim.Collides = true;
 	Entity.LowEntity->Sim.Moveable = true;
 	Entity.LowEntity->Sim.NonSpatial = true;
 
@@ -205,6 +213,7 @@ AddHero(world *World, stack_allocator *WorldAllocator, world_position P, v3 Dim)
 	add_low_entity_result Entity = AddLowEntity(World, WorldAllocator, EntityType_Hero, P, Dim);
 
 	Entity.LowEntity->Sim.Moveable = true;
+	Entity.LowEntity->Sim.Collides = true;
 	Entity.LowEntity->Sim.Fireball.LowIndex = AddFireball(World, WorldAllocator);
 
 	return(Entity.LowEntity);
