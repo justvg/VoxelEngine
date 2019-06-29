@@ -140,6 +140,10 @@ ProcessInput(game_input *Input, camera *Camera, hero_control *Hero, real32 Delta
 	{
 		Input->MouseRight = false;
 	}
+	if (Input->MouseLeft)
+	{
+		Input->MouseLeft = false;
+	}
 }
 
 int main(void)
@@ -172,11 +176,13 @@ int main(void)
 	// real32 GameUpdateHz = VidMode->refreshRate / 2.0f;
 	int32 GameUpdateHz = VidMode->refreshRate;
 	real32 TargetSecondsForFrame = 1.0f / GameUpdateHz;
+	
+	InitializeTextRenderer(&Game.TextRenderer);
 
 	Game.JobSystem = &JobSystem;
 	Game.WorldAllocatorSemaphore = CreateSemaphoreEx(0, 1, 1, 0, 0, SEMAPHORE_ALL_ACCESS);
-	// Game.Sound.InitAndLoadSounds();
-	// Game.Sound.PlaySound2D(sound_music);
+	Game.Sound.InitAndLoadSounds();
+	// Game.Sound.PlaySound2D(Sound_Music, true);
 
 	void *MainMemory = malloc(Gigabytes(2));
 	ZeroMemory(MainMemory, Gigabytes(2));
@@ -214,15 +220,16 @@ int main(void)
 	shader TestShader("shaders/vertex.vert", "shaders/fragment.frag");
 	shader TestShader2D("shaders/2d.vert", "shaders/2d.frag");
 	shader BlockParticleShader("shaders/block_particle.vert", "shaders/block_particle.frag");
+	shader TextShader("shaders/text.vert", "shaders/text.frag");
 
 	InitializeBlockParticleGenerator(&Game.BlockParticleGenerator, BlockParticleShader);
 
 	real32 TestCrosshairVertices[] =
 	{
-		Width / 2.0f - 7.5f, Height / 2.0f - 7.5f - 55.0f, 0.0f, 1.0f,
-		Width / 2.0f - 7.5f, Height / 2.0f + 7.5f - 55.0f, 0.0f, 0.0f,
-		Width / 2.0f + 7.5f, Height / 2.0f - 7.5f - 55.0f, 1.0f, 1.0f,
-		Width / 2.0f + 7.5f, Height / 2.0f + 7.5f - 55.0f, 1.0f, 0.0f,
+		Width / 2.0f - 7.5f, Height / 2.0f + 7.5f + 55.0f, 0.0f, 1.0f,
+		Width / 2.0f - 7.5f, Height / 2.0f - 7.5f + 55.0f, 0.0f, 0.0f,
+		Width / 2.0f + 7.5f, Height / 2.0f + 7.5f + 55.0f, 1.0f, 1.0f,
+		Width / 2.0f + 7.5f, Height / 2.0f - 7.5f + 55.0f, 1.0f, 0.0f,
 	};
 	GLuint VAOCrosshair, VBOCrosshair;
 	glGenVertexArrays(1, &VAOCrosshair);
@@ -239,9 +246,13 @@ int main(void)
 	GLuint CrosshairTexture = LoadTexture("data/textures/crosshair.tga");
 
 	TestShader2D.Enable();
-	mat4 Orthographic = Ortho((real32)Height, 0.0f, 0.0f, (real32)Width, -1.0f, 1.0f);
+	mat4 Orthographic = Ortho(0.0f, (real32)Height, 0.0f, (real32)Width, -1.0f, 1.0f);
 	glUniformMatrix4fv(glGetUniformLocation(TestShader2D.ID, "Projection"), 1, GL_FALSE, Orthographic.Elements);
 	glUniform1i(glGetUniformLocation(TestShader2D.ID, "Texture"), 0);
+
+	TextShader.Enable();
+	glUniformMatrix4fv(glGetUniformLocation(TextShader.ID, "Projection"), 1, GL_FALSE, Orthographic.Elements);
+	glUniform1i(glGetUniformLocation(TextShader.ID, "Texture"), 0);
 
 	TestShader.Enable();
 	mat4 Projection = Perspective(45.0f, (real32)Width / (real32)Height, 0.1f, 100.0f);
@@ -264,7 +275,7 @@ int main(void)
 	{
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		// SoundEngine.Update(Camera->Position, Camera->Front);
+		Game.Sound.Update(Game.Hero->Sim.FacingDir);
 		ProcessInput(&Game.Input, Camera, &Game.HeroControl, DeltaTime);
 
 		world_position Origin = Game.Hero->P;
@@ -285,7 +296,7 @@ int main(void)
 		RenderChunks(World, TestShader.ID, &ViewRotation, &Projection, -Camera->OffsetFromHero);
 
 		UpdateAndRenderEntities(SimRegion, Game.Assets, &Game.HeroControl, DeltaTime, TestShader.ID, &ViewRotation, -Camera->OffsetFromHero,
-								&Game.BlockParticleGenerator);
+								&Game.BlockParticleGenerator, &Game.Sound);
 
 		EndSimulation(SimRegion, World, &Game.WorldAllocator);
 		EndTemporaryMemory(TempSimMemory);
@@ -319,7 +330,8 @@ int main(void)
 		}
 		LastFrame = (real32)glfwGetTime();
 
-		std::cout << DeltaTime << std::endl;
+		RenderText(&Game.TextRenderer, TextShader, "FPS:", 0.0f, 15.0f, 0.5f, V3(1.0f, 0.0f, 0.0f));
+		RenderTextNumber(&Game.TextRenderer, TextShader, (uint32)(1.0f / DeltaTime + 0.5f), 55.0f, 15.0f, 0.5f, V3(1.0f, 0.0f, 0.0f));
 
 		glfwPollEvents();
 		glfwSwapBuffers(Window);

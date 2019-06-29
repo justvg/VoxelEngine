@@ -402,7 +402,7 @@ CanCollide(sim_entity *A, sim_entity *B)
 }
 
 internal bool32 
-HandleCollision(sim_region *SimRegion, v3 DistancePassed, world_position *OldWorldP, block_particle_generator *BlockParticleGenerator,
+HandleCollision(sound_system *SoundSystem, sim_region *SimRegion, v3 DistancePassed, world_position *OldWorldP, block_particle_generator *BlockParticleGenerator,
 				sim_entity *EntityA, sim_entity *EntityB, entity_type A, entity_type B)
 {
 	bool32 Result = false;
@@ -419,6 +419,7 @@ HandleCollision(sim_region *SimRegion, v3 DistancePassed, world_position *OldWor
 		Assert(EntityA);
 		Assert(EntityA->Type == EntityType_Fireball);
 		MakeEntityNonSpatial(EntityA);
+		SoundSystem->StopSoundAndDeleteFromHashTable(EntityA->StorageIndex);
 		for (int32 Z = -2; Z <= 2; Z++)
 		{
 			for (int32 Y = -2; Y <= 2; Y++)
@@ -460,7 +461,8 @@ struct move_spec
 	bool32 GravityAffected;
 };
 internal void
-MoveEntity(sim_region *SimRegion, block_particle_generator *BlockParticleGenerator, sim_entity *Entity, real32 DeltaTime, move_spec *MoveSpec)
+MoveEntity(sim_region *SimRegion, sound_system *SoundSystem, block_particle_generator *BlockParticleGenerator, 
+		   sim_entity *Entity, real32 DeltaTime, move_spec *MoveSpec)
 {
 	real32 ddPLength = LengthSq(MoveSpec->ddP);
 	if(ddPLength > 1.0f)
@@ -666,7 +668,7 @@ MoveEntity(sim_region *SimRegion, block_particle_generator *BlockParticleGenerat
 				EntityDelta = DesiredPos - Entity->P;
 				if(HitEntityType)
 				{
-					bool32 StopOnCollision = HandleCollision(SimRegion, DistancePassed, &OldWorldP, BlockParticleGenerator,
+					bool32 StopOnCollision = HandleCollision(SoundSystem, SimRegion, DistancePassed, &OldWorldP, BlockParticleGenerator,
 															 Entity, HitEntity, Entity->Type, HitEntityType);
 					if (StopOnCollision)
 					{
@@ -689,7 +691,7 @@ MoveEntity(sim_region *SimRegion, block_particle_generator *BlockParticleGenerat
 internal void
 UpdateAndRenderEntities(sim_region *SimRegion, graphics_assets *Assets, hero_control *Hero, 
 						real32 DeltaTime, GLuint Shader, mat4 *ViewRotation, v3 CameraOffsetFromHero,
-						block_particle_generator *BlockParticleGenerator)
+						block_particle_generator *BlockParticleGenerator, sound_system *SoundSystem)
 {
 	for(uint32 EntityIndex = 0; EntityIndex < SimRegion->EntityCount; EntityIndex++)
 	{
@@ -710,6 +712,7 @@ UpdateAndRenderEntities(sim_region *SimRegion, graphics_assets *Assets, hero_con
 					if (Hero->dY && Entity->OnGround)
 					{
 						Entity->dP.y = Hero->dY;
+						SoundSystem->PlaySound2D(Sound_Jump);
 					}
 					if (Hero->Attack)
 					{
@@ -718,6 +721,7 @@ UpdateAndRenderEntities(sim_region *SimRegion, graphics_assets *Assets, hero_con
 						world_chunk *Chunk = GetWorldChunk(SimRegion->World, NewWorldP.ChunkX, NewWorldP.ChunkY, NewWorldP.ChunkZ);
 						Assert(Chunk);
 						SetBlockActive(BlockParticleGenerator, SimRegion->World, Chunk, NewWorldP, false);
+						SoundSystem->PlayRandomSound2D(Sound_Hit1, Sound_Hit3);
 					}
 					if (Hero->Fireball)
 					{
@@ -728,6 +732,7 @@ UpdateAndRenderEntities(sim_region *SimRegion, graphics_assets *Assets, hero_con
 							Fireball->NonSpatial = false;
 							Fireball->P = Entity->P;
 							Fireball->dP = Entity->dP + 10.0f*Entity->FacingDir;
+							SoundSystem->PlaySound2DAndAddToHashTable(Fireball->StorageIndex, Sound_Spell);
 						}
 					}
 				} break;
@@ -736,13 +741,14 @@ UpdateAndRenderEntities(sim_region *SimRegion, graphics_assets *Assets, hero_con
 					if (Entity->DistanceLimit == 0.0f)
 					{
 						MakeEntityNonSpatial(Entity);
+						SoundSystem->StopSoundAndDeleteFromHashTable(Entity->StorageIndex);
 					}
 				} break;
 			}
 
 			if(!Entity->NonSpatial && Entity->Moveable)
 			{
-				MoveEntity(SimRegion, BlockParticleGenerator, Entity, DeltaTime, &MoveSpec);
+				MoveEntity(SimRegion, SoundSystem, BlockParticleGenerator, Entity, DeltaTime, &MoveSpec);
 			}
 
 			if(Assets->EntityModels[Entity->Type])

@@ -3,10 +3,13 @@
 #include "GL\glew.h"
 #include "GLFW\glfw3.h"
 #include "irrKlang.h"
+#include "ft2build.h"
+#include FT_FREETYPE_H
 #include "simplexnoise.h"
 #include <Windows.h>
 #include <intrin.h>
 #include <vector>
+#include <map>
 #include <iostream>
 
 typedef uint8_t uint8;
@@ -161,6 +164,173 @@ struct hero_control
 #include "world.hpp"
 #include "sim_region.hpp"
 
+struct character
+{
+	GLuint TextureID;
+	v2 Size;
+	v2 Bearing;
+	uint32 AdvanceToNext;
+};
+
+struct text_renderer
+{
+	GLuint VAO, VBO;
+	std::map<GLchar, character> Characters;
+};
+
+inline void
+InitializeTextRenderer(text_renderer *TextRenderer)
+{
+	FT_Library FreeType;
+	if (FT_Init_FreeType(&FreeType))
+	{
+		std::cout << "ERROR::FREETYPE: Could not init FreeType Library" << std::endl;
+	}
+
+	FT_Face Font;
+	if (FT_New_Face(FreeType, "data/fonts/arial.ttf", 0, &Font))
+	{
+		std::cout << "ERROR::FREETYPE: Failed to load font" << std::endl;	}
+
+	FT_Set_Pixel_Sizes(Font, 0, 48);
+	
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+	for (uint8 C = 0; C < 128; C++)
+	{
+		if (FT_Load_Char(Font, C, FT_LOAD_RENDER))
+		{
+			std::cout << "ERROR::FREETYTPE: Failed to load Glyph" << (char)C << std::endl;
+			continue;		}
+
+		GLuint Texture;
+		glGenTextures(1, &Texture);
+		glBindTexture(GL_TEXTURE_2D, Texture);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, Font->glyph->bitmap.width, Font->glyph->bitmap.rows, 0, GL_RED, GL_UNSIGNED_BYTE, Font->glyph->bitmap.buffer);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+		character Character = {Texture, V2(Font->glyph->bitmap.width, Font->glyph->bitmap.rows),
+							   V2(Font->glyph->bitmap_left, Font->glyph->bitmap_top), Font->glyph->advance.x};
+		TextRenderer->Characters.insert(std::pair<GLchar, character>(C, Character));
+	}
+
+	FT_Done_Face(Font);
+	FT_Done_FreeType(FreeType);
+
+	glGenVertexArrays(1, &TextRenderer->VAO);
+	glGenBuffers(1, &TextRenderer->VBO);
+	glBindVertexArray(TextRenderer->VAO);
+	glBindBuffer(GL_ARRAY_BUFFER, TextRenderer->VBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(real32) * 4 * 4, 0, GL_DYNAMIC_DRAW);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4*sizeof(real32), 0);
+	glBindVertexArray(0);
+}
+
+internal void
+RenderText(text_renderer *TextRenderer, shader &Shader, char *String, real32 X, real32 Y, real32 Scale, v3 Color)
+{
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	Shader.Enable();
+	glUniform3fv(glGetUniformLocation(Shader.ID, "TextColor"), 1, &Color.x);
+	glActiveTexture(GL_TEXTURE0);
+	glBindVertexArray(TextRenderer->VAO);
+
+	for (char *C = String; *C != '\0'; C++)
+	{
+		character Ch = TextRenderer->Characters[*C];
+
+		real32 XPos = X + Ch.Bearing.x * Scale;
+		real32 YPos = Y - (Ch.Size.y - Ch.Bearing.y) * Scale;
+
+		real32 W = Ch.Size.x * Scale;
+		real32 H = Ch.Size.y * Scale;
+
+		real32 Vertices[4][4] = 
+			{
+				{ XPos,  YPos + H, 0.0f, 0.0f },
+				{ XPos,  YPos, 0.0f, 1.0f },
+				{ XPos + W,  YPos + H, 1.0f, 0.0f },
+				{ XPos + W,  YPos, 1.0f, 1.0f}
+			};
+
+		glBindTexture(GL_TEXTURE_2D, Ch.TextureID);
+		glBindBuffer(GL_ARRAY_BUFFER, TextRenderer->VBO);
+		glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Vertices), Vertices);
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+		X += (Ch.AdvanceToNext >> 6) * Scale;
+	}
+
+	glBindVertexArray(0);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glDisable(GL_BLEND);
+}
+
+internal void 
+RenderTextNumber(text_renderer *TextRenderer, shader &Shader, uint32 Num, real32 X, real32 Y, real32 Scale, v3 Color)
+{
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	Shader.Enable();
+	glUniform3fv(glGetUniformLocation(Shader.ID, "TextColor"), 1, &Color.x);
+	glActiveTexture(GL_TEXTURE0);
+	glBindVertexArray(TextRenderer->VAO);
+
+	uint32 Length = 0;
+	uint32 Temp = Num;
+	while (Temp > 0)
+	{
+		Length++;
+		Temp /= 10;
+	}
+
+	for(uint32 I = 0; I < Length; I++)
+	{
+		uint32 Digit = Num;
+		while (Digit > 10)
+		{
+			Digit /= 10;
+		}
+		Num = Num % (10 * (Length - I));
+	
+		character Ch = TextRenderer->Characters[Digit + 48];
+
+		real32 XPos = X + Ch.Bearing.x * Scale;
+		real32 YPos = Y - (Ch.Size.y - Ch.Bearing.y) * Scale;
+
+		real32 W = Ch.Size.x * Scale;
+		real32 H = Ch.Size.y * Scale;
+
+		real32 Vertices[4][4] =
+		{
+			{ XPos,  YPos + H, 0.0f, 0.0f },
+			{ XPos,  YPos, 0.0f, 1.0f },
+			{ XPos + W,  YPos + H, 1.0f, 0.0f },
+			{ XPos + W,  YPos, 1.0f, 1.0f }
+		};
+
+		glBindTexture(GL_TEXTURE_2D, Ch.TextureID);
+		glBindBuffer(GL_ARRAY_BUFFER, TextRenderer->VBO);
+		glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Vertices), Vertices);
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+		X += (Ch.AdvanceToNext >> 6) * Scale;
+	}
+
+	glBindVertexArray(0);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glDisable(GL_BLEND);
+}
+
 struct add_low_entity_result
 {
 	low_entity *LowEntity;
@@ -260,4 +430,6 @@ struct game
 	hero_control HeroControl;
 
 	block_particle_generator BlockParticleGenerator;
+
+	text_renderer TextRenderer;
 };
