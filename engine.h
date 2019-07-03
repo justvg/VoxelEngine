@@ -162,7 +162,28 @@ struct hero_control
 #include "sound_manager.hpp"
 #include "qubicle_binary_loader.hpp"
 #include "world.hpp"
-#include "sim_region.hpp"
+
+inline sim_entity_collision_volume_group *
+MakeNullCollision(stack_allocator *Allocator)
+{
+	sim_entity_collision_volume_group *Group = PushStruct(Allocator, sim_entity_collision_volume_group);
+	Group->VolumeCount = 0;
+	Group->Volumes = 0;
+
+	return(Group);
+}
+
+inline sim_entity_collision_volume_group *
+MakeSimpleCollision(stack_allocator *Allocator, v3 Dim, v3 Offset)
+{
+	sim_entity_collision_volume_group *Group = PushStruct(Allocator, sim_entity_collision_volume_group);
+	Group->VolumeCount = 1;
+	Group->Volumes = PushStruct(Allocator, sim_entity_collision_volume);
+	Group->Volumes[0].Dim = Dim;
+	Group->Volumes[0].OffsetP = Offset;
+
+	return(Group);
+}
 
 struct character
 {
@@ -212,8 +233,8 @@ InitializeTextRenderer(text_renderer *TextRenderer)
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-		character Character = {Texture, V2(Font->glyph->bitmap.width, Font->glyph->bitmap.rows),
-							   V2(Font->glyph->bitmap_left, Font->glyph->bitmap_top), Font->glyph->advance.x};
+		character Character = {Texture, V2((real32)Font->glyph->bitmap.width, (real32)Font->glyph->bitmap.rows),
+							   V2((real32)Font->glyph->bitmap_left, (real32)Font->glyph->bitmap_top), (uint32)Font->glyph->advance.x};
 		TextRenderer->Characters.insert(std::pair<GLchar, character>(C, Character));
 	}
 
@@ -331,64 +352,6 @@ RenderTextNumber(text_renderer *TextRenderer, shader &Shader, uint32 Num, real32
 	glDisable(GL_BLEND);
 }
 
-struct add_low_entity_result
-{
-	low_entity *LowEntity;
-	uint32 StorageIndex;
-};
-internal add_low_entity_result
-AddLowEntity(world *World, stack_allocator *WorldAllocator, entity_type Type, world_position P, v3 Dim)
-{
-	add_low_entity_result Result;
-
-	Assert(World->LowEntityCount < ArrayCount(World->LowEntities));
-	uint32 EntityIndex = World->LowEntityCount++;
-
-	low_entity *LowEntity = World->LowEntities + EntityIndex;
-	*LowEntity = {};
-	LowEntity->Sim.StorageIndex = EntityIndex;
-	LowEntity->Sim.Type = Type;
-	LowEntity->Sim.Dim = Dim;
-	LowEntity->P = InvalidPosition();
-
-	ChangeEntityLocation(World, WorldAllocator, EntityIndex, LowEntity, P);
-
-	Result.LowEntity = LowEntity;
-	Result.StorageIndex = EntityIndex;
-
-	return(Result);
-}
-
-internal void 
-AddTree(world *World, stack_allocator *WorldAllocator, world_position P, v3 Dim)
-{
-	add_low_entity_result Entity = AddLowEntity(World, WorldAllocator, EntityType_Tree, P, Dim);
-	Entity.LowEntity->Sim.Collides = true;
-}
-
-internal uint32
-AddFireball(world *World, stack_allocator *WorldAllocator)
-{
-	add_low_entity_result Entity = AddLowEntity(World, WorldAllocator, EntityType_Fireball, InvalidPosition(), V3(0.3f, 0.3f, 0.3f));
-	Entity.LowEntity->Sim.Collides = true;
-	Entity.LowEntity->Sim.Moveable = true;
-	Entity.LowEntity->Sim.NonSpatial = true;
-
-	return(Entity.StorageIndex);
-}
-
-internal low_entity *
-AddHero(world *World, stack_allocator *WorldAllocator, world_position P, v3 Dim)
-{
-	add_low_entity_result Entity = AddLowEntity(World, WorldAllocator, EntityType_Hero, P, Dim);
-
-	Entity.LowEntity->Sim.Moveable = true;
-	Entity.LowEntity->Sim.Collides = true;
-	Entity.LowEntity->Sim.Fireball.LowIndex = AddFireball(World, WorldAllocator);
-
-	return(Entity.LowEntity);
-}
-
 struct camera
 {
 	real32 DistanceFromHero;
@@ -432,4 +395,68 @@ struct game
 	block_particle_generator BlockParticleGenerator;
 
 	text_renderer TextRenderer;
+
+	sim_entity_collision_volume_group *NullCollision;
+	sim_entity_collision_volume_group *TreeCollision;
 };
+
+#include "sim_region.hpp"
+
+struct add_low_entity_result
+{
+	low_entity *LowEntity;
+	uint32 StorageIndex;
+};
+internal add_low_entity_result
+AddLowEntity(game *Game, entity_type Type, world_position P, v3 Dim)
+{
+	add_low_entity_result Result;
+	world *World = &Game->World;
+	Assert(World->LowEntityCount < ArrayCount(World->LowEntities));
+	uint32 EntityIndex = World->LowEntityCount++;
+
+	low_entity *LowEntity = World->LowEntities + EntityIndex;
+	*LowEntity = {};
+	LowEntity->Sim.StorageIndex = EntityIndex;
+	LowEntity->Sim.Type = Type;
+	LowEntity->Sim.Dim = Dim;
+	LowEntity->Sim.Collision = Game->NullCollision;
+	LowEntity->P = InvalidPosition();
+
+	ChangeEntityLocation(World, &Game->WorldAllocator, EntityIndex, LowEntity, P);
+
+	Result.LowEntity = LowEntity;
+	Result.StorageIndex = EntityIndex;
+
+	return(Result);
+}
+
+internal void
+AddTree(game *Game, world_position P, v3 Dim)
+{
+	add_low_entity_result Entity = AddLowEntity(Game, EntityType_Tree, P, Dim);
+	Entity.LowEntity->Sim.Collides = true;
+}
+
+internal uint32
+AddFireball(game *Game)
+{
+	add_low_entity_result Entity = AddLowEntity(Game, EntityType_Fireball, InvalidPosition(), V3(0.3f, 0.3f, 0.3f));
+	Entity.LowEntity->Sim.Collides = true;
+	Entity.LowEntity->Sim.Moveable = true;
+	Entity.LowEntity->Sim.NonSpatial = true;
+
+	return(Entity.StorageIndex);
+}
+
+internal low_entity *
+AddHero(game *Game, world_position P, v3 Dim)
+{
+	add_low_entity_result Entity = AddLowEntity(Game, EntityType_Hero, P, Dim);
+
+	Entity.LowEntity->Sim.Moveable = true;
+	Entity.LowEntity->Sim.Collides = true;
+	Entity.LowEntity->Sim.Fireball.LowIndex = AddFireball(Game);
+
+	return(Entity.LowEntity);
+}

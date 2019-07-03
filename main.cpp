@@ -197,10 +197,12 @@ int main(void)
 	world *World = &Game.World;
 	InitializeWorld(World);
 
+	Game.NullCollision = MakeNullCollision(&Game.WorldAllocator);
+
 	glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
 	camera *Camera = &Game.Camera;
-	Camera->DistanceFromHero = 8.0f;
+	Camera->DistanceFromHero = 6.0f;
 	Camera->Pitch = 0.0f;
 	Camera->Head = 0.0f;
 	Camera->RotSensetivity = 0.1f;
@@ -262,12 +264,12 @@ int main(void)
 	glUniformMatrix4fv(glGetUniformLocation(BlockParticleShader.ID, "Projection"), 1, GL_FALSE, Projection.Elements);
 
 	// NOTE(georgy): Reserve entity slot 0
-	AddLowEntity(World, &Game.WorldAllocator, EntityType_Null, InvalidPosition(), V3(0.0f, 0.0f, 0.0f));
+	AddLowEntity(&Game, EntityType_Null, InvalidPosition(), V3(0.0f, 0.0f, 0.0f));
 
 	world_position TestHeroPosition = {10004, 1, 10002, V3(0.0f, 0.25f, 0.0f)};
-	Game.Hero = AddHero(World, &Game.WorldAllocator, TestHeroPosition, V3(1.0f, 1.0f, 1.0f));
-	world_position TestTreePos = { 10004, 0, 10002, V3(4.0f, 3.0f, 0.0f) };
-	AddTree(World, &Game.WorldAllocator, TestTreePos, V3(1.0f, 2.0f, 1.0f));
+	Game.Hero = AddHero(&Game, TestHeroPosition, V3(1.0f, 1.0f, 1.0f));
+	world_position TestTreePos = { 10004, 0, 10002, V3(4.0f, 3.3f, 0.0f) };
+	AddTree(&Game, TestTreePos, V3(1.0f, 2.0f, 1.0f));
 
 	real32 DeltaTime = TargetSecondsForFrame;
 	real32 LastFrame = (real32)glfwGetTime();
@@ -295,8 +297,7 @@ int main(void)
 		mat4 ViewRotation = RotationMatrixFromDirectionVector(Normalize(-Camera->OffsetFromHero));
 		RenderChunks(World, TestShader.ID, &ViewRotation, &Projection, -Camera->OffsetFromHero);
 
-		UpdateAndRenderEntities(SimRegion, Game.Assets, &Game.HeroControl, DeltaTime, TestShader.ID, &ViewRotation, -Camera->OffsetFromHero,
-								&Game.BlockParticleGenerator, &Game.Sound);
+		UpdateAndRenderEntities(SimRegion, &Game, DeltaTime, TestShader.ID, &ViewRotation, -Camera->OffsetFromHero);
 
 		EndSimulation(SimRegion, World, &Game.WorldAllocator);
 		EndTemporaryMemory(TempSimMemory);

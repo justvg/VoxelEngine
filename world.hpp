@@ -150,13 +150,37 @@ struct entity_reference
 	sim_entity *SimPtr;
 };
 
+enum entity_type
+{
+	EntityType_Null,
+
+	EntityType_Chunk, // NOTE(georgy): We can't create chunk entities, it is needed for collision detection, if we don't want make chunk an entity
+	EntityType_Hero,
+	EntityType_Tree,
+	EntityType_Fireball,
+
+	EntityType_Count
+};
+
+struct sim_entity_collision_volume
+{
+	v3 OffsetP;
+	v3 Dim;
+};
+
+struct sim_entity_collision_volume_group
+{
+	uint32 VolumeCount;
+	sim_entity_collision_volume *Volumes;
+};
+
 struct sim_entity
 {
 	uint32 StorageIndex;
 	entity_type Type;
 
-	// NOTE(georgy): Now col. volume center is the center of the entity
 	v3 Dim;
+	sim_entity_collision_volume_group *Collision;
 
 	entity_reference Fireball;
 

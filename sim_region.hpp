@@ -43,7 +43,7 @@ inline v3
 GetSimSpaceP(sim_region *SimRegion, low_entity *LowEntity)
 {
 	// TODO(georgy): Formulate this!
-	v3 Result = V3(TILE_CHUNK_SAFE_MARGIN, TILE_CHUNK_SAFE_MARGIN, TILE_CHUNK_SAFE_MARGIN);
+	v3 Result = V3((real32)TILE_CHUNK_SAFE_MARGIN, (real32)TILE_CHUNK_SAFE_MARGIN, (real32)TILE_CHUNK_SAFE_MARGIN);
 	if(!LowEntity->Sim.NonSpatial)
 	{
 		Result = Substract(SimRegion->World, &LowEntity->P, &SimRegion->Origin);
@@ -227,7 +227,7 @@ EndSimulation(sim_region *SimRegion, world *World, stack_allocator *WorldAllocat
 }
 
 internal void
-LoadAsset(graphics_assets *Assets, entity_type Type)
+LoadAsset(graphics_assets *Assets, asset_type Type)
 {
 	Assets->EntityModels[Type] = PushStruct(&Assets->AssetsAllocator, mesh);
 
@@ -328,7 +328,7 @@ SetBlockActive(block_particle_generator *BlockParticleGenerator, world *World, w
 
 	if(GetVoxel(Chunk->ChunkData->Blocks, X, Y, Z).Active != Active)
 	{
-		GetVoxel(Chunk->ChunkData->Blocks, X, Y, Z).Active = Active;
+		GetVoxel(Chunk->ChunkData->Blocks, X, Y, Z).Active = Active;\
 		Chunk->IsModified = true;
 
 		if (!Active)
@@ -344,7 +344,7 @@ MakeEntityNonSpatial(sim_entity *Entity)
 {
 	Entity->NonSpatial = true;
 	// TODO(georgy): Formulate this!
-	Entity->P = V3(TILE_CHUNK_SAFE_MARGIN, TILE_CHUNK_SAFE_MARGIN, TILE_CHUNK_SAFE_MARGIN);
+	Entity->P = V3((real32)TILE_CHUNK_SAFE_MARGIN, (real32)TILE_CHUNK_SAFE_MARGIN, (real32)TILE_CHUNK_SAFE_MARGIN);
 }
 
 internal bool32
@@ -526,12 +526,8 @@ MoveEntity(sim_region *SimRegion, sound_system *SoundSystem, block_particle_gene
 			v3 DesiredPos = Entity->P + EntityDelta;
 			v3 Normal = {};
 
-#if 0
-			sim_entity *HitEntity = 0; 
-#else
 			sim_entity *HitEntity = 0;
 			entity_type HitEntityType = EntityType_Null;
-#endif
 			if(!Entity->NonSpatial)
 			{ 
 				// NOTE(georgy): Chunk collision test. Should/Can I make chunk an entity? 
@@ -689,10 +685,32 @@ MoveEntity(sim_region *SimRegion, sound_system *SoundSystem, block_particle_gene
 }
 
 internal void
-UpdateAndRenderEntities(sim_region *SimRegion, graphics_assets *Assets, hero_control *Hero, 
-						real32 DeltaTime, GLuint Shader, mat4 *ViewRotation, v3 CameraOffsetFromHero,
-						block_particle_generator *BlockParticleGenerator, sound_system *SoundSystem)
+DrawModel(graphics_assets *Assets, GLuint Shader, asset_type AssetType,
+		  real32 ScaleValue, real32 Rotation, v3 Translate)
 {
+	if(Assets->EntityModels[AssetType])
+	{
+		mat4 ModelMatrix = Scale(ScaleValue);
+		ModelMatrix = Rotate(Rotation, V3(0.0f, 1.0f, 0.0f)) * ModelMatrix;
+		ModelMatrix = Translation(Translate) * ModelMatrix;
+		glUniformMatrix4fv(glGetUniformLocation(Shader, "Model"), 1, GL_FALSE, ModelMatrix.Elements);
+		glBindVertexArray(Assets->EntityModels[AssetType]->VAO);
+		glDrawArrays(GL_TRIANGLES, 0, Assets->EntityModels[AssetType]->VerticesCount);
+	}
+	else
+	{
+		LoadAsset(Assets, AssetType);
+	}
+}
+
+internal void
+UpdateAndRenderEntities(sim_region *SimRegion, game *Game,
+						real32 DeltaTime, GLuint Shader, mat4 *ViewRotation, v3 CameraOffsetFromHero)
+{
+	graphics_assets *Assets = Game->Assets;
+	hero_control *Hero = &Game->HeroControl;
+	block_particle_generator *BlockParticleGenerator = &Game->BlockParticleGenerator;
+	sound_system *SoundSystem = &Game->Sound;
 	for(uint32 EntityIndex = 0; EntityIndex < SimRegion->EntityCount; EntityIndex++)
 	{
 		sim_entity *Entity = SimRegion->Entities + EntityIndex;	
@@ -704,12 +722,12 @@ UpdateAndRenderEntities(sim_region *SimRegion, graphics_assets *Assets, hero_con
 			{
 				case EntityType_Hero:
 				{
-					Entity->FacingDir = Normalize(V3(CameraOffsetFromHero.x, 0, CameraOffsetFromHero.z));
+					v3 ActionDir = Normalize(V3(CameraOffsetFromHero.x, 0, CameraOffsetFromHero.z));
 					MoveSpec.ddP = Hero->ddP;
 					MoveSpec.Speed = 10.0f;
 					MoveSpec.Drag = 1.5f;
 					MoveSpec.GravityAffected = true;
-					if (Hero->dY && Entity->OnGround)
+					if (Hero->dY)
 					{
 						Entity->dP.y = Hero->dY;
 						SoundSystem->PlaySound2D(Sound_Jump);
@@ -717,7 +735,7 @@ UpdateAndRenderEntities(sim_region *SimRegion, graphics_assets *Assets, hero_con
 					if (Hero->Attack)
 					{
 						world_position OldWorldP = SimRegion->World->LowEntities[Entity->StorageIndex].P;
-						world_position NewWorldP = MapIntoChunkSpace(SimRegion->World, OldWorldP, Entity->FacingDir);
+						world_position NewWorldP = MapIntoChunkSpace(SimRegion->World, OldWorldP, ActionDir);
 						world_chunk *Chunk = GetWorldChunk(SimRegion->World, NewWorldP.ChunkX, NewWorldP.ChunkY, NewWorldP.ChunkZ);
 						Assert(Chunk);
 						SetBlockActive(BlockParticleGenerator, SimRegion->World, Chunk, NewWorldP, false);
@@ -731,7 +749,7 @@ UpdateAndRenderEntities(sim_region *SimRegion, graphics_assets *Assets, hero_con
 							Fireball->DistanceLimit = 15.0f;
 							Fireball->NonSpatial = false;
 							Fireball->P = Entity->P;
-							Fireball->dP = Entity->dP + 10.0f*Entity->FacingDir;
+							Fireball->dP = V3(Entity->dP.x, 0.0f, Entity->dP.z) + 10.0f*ActionDir;
 							SoundSystem->PlaySound2DAndAddToHashTable(Fireball->StorageIndex, Sound_Spell);
 						}
 					}
@@ -751,38 +769,73 @@ UpdateAndRenderEntities(sim_region *SimRegion, graphics_assets *Assets, hero_con
 				MoveEntity(SimRegion, SoundSystem, BlockParticleGenerator, Entity, DeltaTime, &MoveSpec);
 			}
 
-			if(Assets->EntityModels[Entity->Type])
+			mat4 ModelMatrix = Identity(1.0f);
+			v3 Translate = Entity->P + CameraOffsetFromHero;
+			mat4 TranslationMatrix = Translation(Translate);
+			mat4 ViewMatrix = *ViewRotation * TranslationMatrix;
+			glUniformMatrix4fv(glGetUniformLocation(Shader, "View"), 1, GL_FALSE, ViewMatrix.Elements);
+
+			switch (Entity->Type)
 			{
-				mat4 ModelMatrix = Identity(1.0f);
-				switch(Entity->Type)
+				case EntityType_Hero:
 				{
-					case EntityType_Hero:
+					DrawModel(Assets, Shader, Asset_HeroHead, Assets->Infos[Asset_HeroHead].Scale, 
+							  Hero->Rot + 180.0f, Assets->Infos[Asset_HeroHead].Offset);
+					DrawModel(Assets, Shader, Asset_HeroBody, Assets->Infos[Asset_HeroBody].Scale,
+							  Hero->Rot + 180.0f, Assets->Infos[Asset_HeroBody].Offset);
+					DrawModel(Assets, Shader, Asset_HeroLegs, Assets->Infos[Asset_HeroLegs].Scale,
+							  Hero->Rot + 180.0f, Assets->Infos[Asset_HeroLegs].Offset);
+
+					real32 HeroRotRadians = Hero->Rot / 180.0f * M_PI;
+					Entity->FacingDir.x = sinf(HeroRotRadians + M_PI);
+					Entity->FacingDir.z = cosf(HeroRotRadians + M_PI);
+					v3 Right = Normalize(Cross(Entity->FacingDir, V3(0.0f, 1.0f, 0.0f)));
+
+					real32 EntitydPLength = Length(Entity->dP);
+					v3 AnimOffsetSin = EntitydPLength/6*0.06f*sinf(10.0f*glfwGetTime()) * Entity->FacingDir;
+					v3 AnimOffsetCos = EntitydPLength/6*0.06f*cosf(10.0f*glfwGetTime()) * Entity->FacingDir;
+
+					v3 Translate = Assets->Infos[Asset_HeroLeftFoot].Offset.x * Right + V3(0.0f, Assets->Infos[Asset_HeroLeftFoot].Offset.y, 0.0f) +
+								   AnimOffsetSin;
+					DrawModel(Assets, Shader, Asset_HeroLeftFoot, Assets->Infos[Asset_HeroLeftFoot].Scale,
+							  Hero->Rot + 180.0f, Translate);
+					Translate = Assets->Infos[Asset_HeroRightFoot].Offset.x * Right + V3(0.0f, Assets->Infos[Asset_HeroRightFoot].Offset.y, 0.0f) +
+								AnimOffsetCos;
+					DrawModel(Assets, Shader, Asset_HeroRightFoot, Assets->Infos[Asset_HeroRightFoot].Scale,
+							  Hero->Rot + 180.0f, Translate);
+
+					Translate = Assets->Infos[Asset_HeroLeftHand].Offset.x * Right + V3(0.0f, Assets->Infos[Asset_HeroLeftHand].Offset.y, 0.0f) +
+								AnimOffsetCos;
+					DrawModel(Assets, Shader, Asset_HeroLeftHand, Assets->Infos[Asset_HeroLeftHand].Scale,
+							  Hero->Rot + 180.0f, Translate);
+					Translate = Assets->Infos[Asset_HeroRightHand].Offset.x * Right + V3(0.0f, Assets->Infos[Asset_HeroRightHand].Offset.y, 0.0f) +
+								AnimOffsetSin;
+					DrawModel(Assets, Shader, Asset_HeroRightHand, Assets->Infos[Asset_HeroRightHand].Scale,
+							  Hero->Rot + 180.0f, Translate);
+						
+					Translate = Assets->Infos[Asset_HeroLeftShoulder].Offset.x * Right + V3(0.0f, Assets->Infos[Asset_HeroLeftShoulder].Offset.y, 0.0f) + 
+								AnimOffsetCos;
+					DrawModel(Assets, Shader, Asset_HeroLeftShoulder, Assets->Infos[Asset_HeroLeftShoulder].Scale,
+							  Hero->Rot + 180.0f, Translate);
+					Translate = Assets->Infos[Asset_HeroRightShoulder].Offset.x * Right + V3(0.0f, Assets->Infos[Asset_HeroRightShoulder].Offset.y, 0.0f) +
+								AnimOffsetSin;
+					DrawModel(Assets, Shader, Asset_HeroRightShoulder, Assets->Infos[Asset_HeroRightShoulder].Scale,
+							  Hero->Rot + 180.0f, Translate);
+				} break;
+				case EntityType_Fireball:
+				{
+					DrawModel(Assets, Shader, Asset_Fireball, Assets->Infos[Asset_Fireball].Scale,
+							  0.0f, Assets->Infos[Asset_Fireball].Offset);
+				} break;
+				case EntityType_Tree:
+				{
+					DrawModel(Assets, Shader, Asset_Tree, Assets->Infos[Asset_Tree].Scale,
+							  0.0f, Assets->Infos[Asset_Tree].Offset);
+					if (Game->TreeCollision)
 					{
-						ModelMatrix = Scale(0.11f);
-						ModelMatrix = ModelMatrix * Rotate(Hero->Rot + 180.0f, V3(0.0f, 1.0f, 0.0f));
-					} break;
-					case EntityType_Fireball:
-					{
-						ModelMatrix = Scale(0.05f);
-					} break;
-					case EntityType_Tree:
-					{
-						ModelMatrix = Translation(V3(0.0f, 0.3f, 0.0f));
-						ModelMatrix = ModelMatrix * Scale(0.35f);
-					} break;
-				}
-				
-				v3 Translate = Entity->P + CameraOffsetFromHero;
-				mat4 TranslationMatrix = Translation(Translate);
-				mat4 ViewMatrix = *ViewRotation * TranslationMatrix;
-				glUniformMatrix4fv(glGetUniformLocation(Shader, "Model"), 1, GL_FALSE, ModelMatrix.Elements);
-				glUniformMatrix4fv(glGetUniformLocation(Shader, "View"), 1, GL_FALSE, ViewMatrix.Elements);
-				glBindVertexArray(Assets->EntityModels[Entity->Type]->VAO);
-				glDrawArrays(GL_TRIANGLES, 0, Assets->EntityModels[Entity->Type]->VerticesCount);
-			}
-			else
-			{
-				LoadAsset(Assets, Entity->Type);
+						Entity->Dim = Assets->Infos[Asset_Tree].Scale*(Assets->EntityModels[Asset_Tree]->AABB.Max - Assets->EntityModels[Asset_Tree]->AABB.Min);
+					}
+				} break;
 			}
 		}
 	}

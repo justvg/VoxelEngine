@@ -15,6 +15,12 @@ struct mat4
 	};
 };
 
+internal v4
+operator*(mat4 A, v4 B)
+{
+
+}
+
 internal mat4 
 operator*(mat4 A, mat4 B)
 {

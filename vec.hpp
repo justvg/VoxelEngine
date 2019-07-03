@@ -133,6 +133,19 @@ V4(real32 X, real32 Y, real32 Z, real32 W)
 	return(Result);
 }
 
+inline v4
+V4(v3 A, real32 W)
+{
+	v4 Result;
+
+	Result.x = A.x;
+	Result.y = A.y;
+	Result.z = A.z;
+	Result.w = A.w;
+
+	return(Result);
+}
+
 //
 // NOTE(georgy): v2 operations
 //

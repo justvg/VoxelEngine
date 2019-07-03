@@ -1,34 +1,46 @@
 #pragma once
 
-enum entity_type
+enum asset_type
 {
-	EntityType_Null,
+	Asset_None,
 
-	EntityType_Chunk, // NOTE(georgy): We can't create chunk entities, it is needed for collision detection, if we don't want make chunk an entity
-	EntityType_Hero,
-	EntityType_Tree,
-	EntityType_Fireball,
+	Asset_HeroHead,
+	Asset_HeroBody,
+	Asset_HeroLegs,
+	Asset_HeroLeftFoot,
+	Asset_HeroRightFoot,
+	Asset_HeroLeftHand,
+	Asset_HeroRightHand,
+	Asset_HeroLeftShoulder,
+	Asset_HeroRightShoulder,
 
-	EntityType_Count
+	Asset_Tree,
+
+	Asset_Fireball,
+
+	Asset_Count
 };
 
 struct mesh
 {
 	GLuint VAO, VBO;
 	uint32 VerticesCount;
+	rect3 AABB;
 };
 
 struct mesh_load_info
 {
 	char *Filename;
+	real32 Scale;
+	v3 Offset;
 };
 
 struct graphics_assets
 {
 	stack_allocator AssetsAllocator;
 
-	mesh *EntityModels[EntityType_Count];
-	mesh_load_info Infos[EntityType_Count];
+	mesh *EntityModels[Asset_Count];
+	mesh_load_info Infos[Asset_Count];
 };
 
 internal graphics_assets *
@@ -37,9 +49,49 @@ InitializeGameAssets(stack_allocator *Allocator, memory_size Size)
 	graphics_assets *Assets = PushStruct(Allocator, graphics_assets);
 	SubMemory(&Assets->AssetsAllocator, Allocator, Size);
 
-	Assets->Infos[EntityType_Hero].Filename = "data/models/Knight.qb";
-	Assets->Infos[EntityType_Tree].Filename = "data/models/tree1.qb";
-	Assets->Infos[EntityType_Fireball].Filename = "data/models/Knight.qb";
+	Assets->Infos[Asset_HeroHead].Filename = "data/models/MaleHead01.qb";
+	Assets->Infos[Asset_HeroHead].Scale = 0.04f;
+	Assets->Infos[Asset_HeroHead].Offset = V3(0.0f, 0.27f, 0.0f);
+
+	Assets->Infos[Asset_HeroBody].Filename = "data/models/Body01.qb";
+	Assets->Infos[Asset_HeroBody].Scale = 0.09f;
+	Assets->Infos[Asset_HeroBody].Offset = V3(0.0f, 0.02f, 0.0f);
+
+	Assets->Infos[Asset_HeroLegs].Filename = "data/models/Legs01.qb";
+	Assets->Infos[Asset_HeroLegs].Scale = 0.09f;
+	Assets->Infos[Asset_HeroLegs].Offset = V3(0.0f, -0.29f, 0.0f);
+
+	Assets->Infos[Asset_HeroLeftFoot].Filename = "data/models/LeftFoot01.qb";
+	Assets->Infos[Asset_HeroLeftFoot].Scale = 0.09f;
+	Assets->Infos[Asset_HeroLeftFoot].Offset = V3(-0.13f, -0.44f, 0.0f);
+
+	Assets->Infos[Asset_HeroRightFoot].Filename = "data/models/RightFoot01.qb";
+	Assets->Infos[Asset_HeroRightFoot].Scale = 0.09f;
+	Assets->Infos[Asset_HeroRightFoot].Offset = V3(0.13f, -0.44f, 0.0f);
+
+	Assets->Infos[Asset_HeroLeftHand].Filename = "data/models/LeftHand01.qb";
+	Assets->Infos[Asset_HeroLeftHand].Scale = 0.09f;
+	Assets->Infos[Asset_HeroLeftHand].Offset = V3(-0.265f, -0.175f, 0.0f);
+
+	Assets->Infos[Asset_HeroRightHand].Filename = "data/models/RightHand01.qb";
+	Assets->Infos[Asset_HeroRightHand].Scale = 0.09f;
+	Assets->Infos[Asset_HeroRightHand].Offset = V3(0.265f, -0.175f, 0.0f);
+
+	Assets->Infos[Asset_HeroLeftShoulder].Filename = "data/models/LeftShoulders01.qb";
+	Assets->Infos[Asset_HeroLeftShoulder].Scale = 0.09f;
+	Assets->Infos[Asset_HeroLeftShoulder].Offset = V3(-0.25f, 0.02f, 0.0f);
+
+	Assets->Infos[Asset_HeroRightShoulder].Filename = "data/models/RightShoulders01.qb";
+	Assets->Infos[Asset_HeroRightShoulder].Scale = 0.09f;
+	Assets->Infos[Asset_HeroRightShoulder].Offset = V3(0.25f, 0.02f, 0.0f);
+
+	Assets->Infos[Asset_Tree].Filename = "data/models/tree1.qb";
+	Assets->Infos[Asset_Tree].Scale = 0.35f;
+	Assets->Infos[Asset_Tree].Offset = V3(0.0f, 0.0f, 0.0f);
+
+	Assets->Infos[Asset_Fireball].Filename = "data/models/Knight.qb";
+	Assets->Infos[Asset_Fireball].Scale = 0.05f;
+	Assets->Infos[Asset_Fireball].Offset = V3(0.0f, 0.0f, 0.0f);
 
 	return(Assets);
 }
@@ -283,6 +335,18 @@ LoadQubicleBinary(mesh *Mesh, char *Filename)
 				}
 			}
 		}
+	}
+
+	Mesh->AABB.Min = V3(FLT_MAX, FLT_MAX, FLT_MAX);
+	Mesh->AABB.Max = V3(FLT_MIN, FLT_MIN, FLT_MIN);
+	for (uint32 I = 0; I < VertexBuffer.size(); I++)
+	{
+		if (VertexBuffer[I].Pos.x > Mesh->AABB.Max.x) Mesh->AABB.Max.x = VertexBuffer[I].Pos.x;
+		if (VertexBuffer[I].Pos.y > Mesh->AABB.Max.y) Mesh->AABB.Max.y = VertexBuffer[I].Pos.y;
+		if (VertexBuffer[I].Pos.z > Mesh->AABB.Max.z) Mesh->AABB.Max.z = VertexBuffer[I].Pos.z;
+		if (VertexBuffer[I].Pos.x < Mesh->AABB.Min.x) Mesh->AABB.Min.x = VertexBuffer[I].Pos.x;
+		if (VertexBuffer[I].Pos.y < Mesh->AABB.Min.y) Mesh->AABB.Min.y = VertexBuffer[I].Pos.y;
+		if (VertexBuffer[I].Pos.z < Mesh->AABB.Min.z) Mesh->AABB.Min.z = VertexBuffer[I].Pos.z;
 	}
 
 	Mesh->VerticesCount = (uint32)VertexBuffer.size();
