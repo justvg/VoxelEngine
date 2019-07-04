@@ -264,12 +264,12 @@ int main(void)
 	glUniformMatrix4fv(glGetUniformLocation(BlockParticleShader.ID, "Projection"), 1, GL_FALSE, Projection.Elements);
 
 	// NOTE(georgy): Reserve entity slot 0
-	AddLowEntity(&Game, EntityType_Null, InvalidPosition(), V3(0.0f, 0.0f, 0.0f));
+	AddLowEntity(&Game, EntityType_Null, InvalidPosition());
 
 	world_position TestHeroPosition = {10004, 1, 10002, V3(0.0f, 0.25f, 0.0f)};
-	Game.Hero = AddHero(&Game, TestHeroPosition, V3(1.0f, 1.0f, 1.0f));
+	Game.Hero = AddHero(&Game, TestHeroPosition);
 	world_position TestTreePos = { 10004, 0, 10002, V3(4.0f, 3.3f, 0.0f) };
-	AddTree(&Game, TestTreePos, V3(1.0f, 2.0f, 1.0f));
+	AddTree(&Game, TestTreePos);
 
 	real32 DeltaTime = TargetSecondsForFrame;
 	real32 LastFrame = (real32)glfwGetTime();

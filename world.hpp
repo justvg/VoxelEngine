@@ -170,6 +170,8 @@ struct sim_entity_collision_volume
 
 struct sim_entity_collision_volume_group
 {
+	sim_entity_collision_volume TotalVolume;
+
 	uint32 VolumeCount;
 	sim_entity_collision_volume *Volumes;
 };
@@ -179,7 +181,6 @@ struct sim_entity
 	uint32 StorageIndex;
 	entity_type Type;
 
-	v3 Dim;
 	sim_entity_collision_volume_group *Collision;
 
 	entity_reference Fireball;

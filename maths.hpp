@@ -80,6 +80,14 @@ RectCenterDim(v3 Center, v3 Dim)
 	return(Result);
 }
 
+inline v3
+GetRectDim(rect3 Rect)
+{
+	v3 Result = Rect.Max - Rect.Min;
+
+	return(Result);
+}
+
 inline bool32
 IsInRect(rect3 Rect, v3 Point)
 {

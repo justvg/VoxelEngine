@@ -167,8 +167,7 @@ inline sim_entity_collision_volume_group *
 MakeNullCollision(stack_allocator *Allocator)
 {
 	sim_entity_collision_volume_group *Group = PushStruct(Allocator, sim_entity_collision_volume_group);
-	Group->VolumeCount = 0;
-	Group->Volumes = 0;
+	*Group = {};
 
 	return(Group);
 }
@@ -182,7 +181,45 @@ MakeSimpleCollision(stack_allocator *Allocator, v3 Dim, v3 Offset)
 	Group->Volumes[0].Dim = Dim;
 	Group->Volumes[0].OffsetP = Offset;
 
+	Group->TotalVolume = Group->Volumes[0];
+
 	return(Group);
+}
+
+inline sim_entity_collision_volume_group *
+AllocateCollision(stack_allocator *Allocator, uint32 VolumeCount)
+{
+	sim_entity_collision_volume_group *Group = PushStruct(Allocator, sim_entity_collision_volume_group);
+	Group->TotalVolume = {};
+	Group->VolumeCount = VolumeCount;
+	Group->Volumes = PushArray(Allocator, VolumeCount, sim_entity_collision_volume);
+
+	return(Group);
+}
+
+inline void
+ComputeTotalVolume(sim_entity_collision_volume_group *Group, v3 SimEntityPos)
+{
+	rect3 AABB;
+	AABB.Min = V3(FLT_MAX, FLT_MAX, FLT_MAX);
+	AABB.Max = V3(FLT_MIN, FLT_MIN, FLT_MIN);
+	v3 OffsetSum = V3(0.0f, 0.0f, 0.0f);
+	for (uint32 VolumeIndex = 0; VolumeIndex < Group->VolumeCount; VolumeIndex++)
+	{
+		sim_entity_collision_volume *Volume = Group->Volumes + VolumeIndex;
+		v3 A = SimEntityPos + Volume->OffsetP - 0.5f*Volume->Dim;
+		v3 B = SimEntityPos + Volume->OffsetP + 0.5f*Volume->Dim;
+		if (B.x > AABB.Max.x) AABB.Max.x = B.x;
+		if (B.y > AABB.Max.y) AABB.Max.y = B.y;
+		if (B.z > AABB.Max.z) AABB.Max.z = B.z;
+		if (A.x < AABB.Min.x) AABB.Min.x = A.x;
+		if (A.y < AABB.Min.y) AABB.Min.y = A.y;
+		if (A.z < AABB.Min.z) AABB.Min.z = A.z;
+		OffsetSum += Volume->OffsetP;
+	}
+
+	Group->TotalVolume.Dim = AABB.Max - AABB.Min;
+	Group->TotalVolume.OffsetP = (AABB.Max - 0.5f*Group->TotalVolume.Dim) - SimEntityPos;
 }
 
 struct character
@@ -398,6 +435,8 @@ struct game
 
 	sim_entity_collision_volume_group *NullCollision;
 	sim_entity_collision_volume_group *TreeCollision;
+	sim_entity_collision_volume_group *HeroCollision;
+	sim_entity_collision_volume_group *FireballCollision;
 };
 
 #include "sim_region.hpp"
@@ -408,7 +447,7 @@ struct add_low_entity_result
 	uint32 StorageIndex;
 };
 internal add_low_entity_result
-AddLowEntity(game *Game, entity_type Type, world_position P, v3 Dim)
+AddLowEntity(game *Game, entity_type Type, world_position P)
 {
 	add_low_entity_result Result;
 	world *World = &Game->World;
@@ -419,7 +458,6 @@ AddLowEntity(game *Game, entity_type Type, world_position P, v3 Dim)
 	*LowEntity = {};
 	LowEntity->Sim.StorageIndex = EntityIndex;
 	LowEntity->Sim.Type = Type;
-	LowEntity->Sim.Dim = Dim;
 	LowEntity->Sim.Collision = Game->NullCollision;
 	LowEntity->P = InvalidPosition();
 
@@ -432,16 +470,16 @@ AddLowEntity(game *Game, entity_type Type, world_position P, v3 Dim)
 }
 
 internal void
-AddTree(game *Game, world_position P, v3 Dim)
+AddTree(game *Game, world_position P)
 {
-	add_low_entity_result Entity = AddLowEntity(Game, EntityType_Tree, P, Dim);
+	add_low_entity_result Entity = AddLowEntity(Game, EntityType_Tree, P);
 	Entity.LowEntity->Sim.Collides = true;
 }
 
 internal uint32
 AddFireball(game *Game)
 {
-	add_low_entity_result Entity = AddLowEntity(Game, EntityType_Fireball, InvalidPosition(), V3(0.3f, 0.3f, 0.3f));
+	add_low_entity_result Entity = AddLowEntity(Game, EntityType_Fireball, InvalidPosition());
 	Entity.LowEntity->Sim.Collides = true;
 	Entity.LowEntity->Sim.Moveable = true;
 	Entity.LowEntity->Sim.NonSpatial = true;
@@ -450,9 +488,9 @@ AddFireball(game *Game)
 }
 
 internal low_entity *
-AddHero(game *Game, world_position P, v3 Dim)
+AddHero(game *Game, world_position P)
 {
-	add_low_entity_result Entity = AddLowEntity(Game, EntityType_Hero, P, Dim);
+	add_low_entity_result Entity = AddLowEntity(Game, EntityType_Hero, P);
 
 	Entity.LowEntity->Sim.Moveable = true;
 	Entity.LowEntity->Sim.Collides = true;
