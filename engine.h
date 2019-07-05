@@ -294,7 +294,7 @@ RenderText(text_renderer *TextRenderer, shader &Shader, char *String, real32 X, 
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	Shader.Enable();
-	glUniform3fv(glGetUniformLocation(Shader.ID, "TextColor"), 1, &Color.x);
+	Shader.SetVec3("TextColor", Color);
 	glActiveTexture(GL_TEXTURE0);
 	glBindVertexArray(TextRenderer->VAO);
 
@@ -337,7 +337,7 @@ RenderTextNumber(text_renderer *TextRenderer, shader &Shader, uint32 Num, real32
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	Shader.Enable();
-	glUniform3fv(glGetUniformLocation(Shader.ID, "TextColor"), 1, &Color.x);
+	Shader.SetVec3("TextColor", Color);
 	glActiveTexture(GL_TEXTURE0);
 	glBindVertexArray(TextRenderer->VAO);
 
@@ -403,10 +403,12 @@ struct camera
 inline void
 UpdateCameraOffsetFromHero(camera *Camera)
 {
-	real32 VerticalDistance = Camera->DistanceFromHero * sinf(-Camera->Pitch / 180.0f * M_PI);
-	real32 HorizontalDistance = Camera->DistanceFromHero * cosf(-Camera->Pitch / 180.0f * M_PI);
-	real32 XOffsetFromHero = HorizontalDistance * sinf(-Camera->Head / 180.0f * M_PI);
-	real32 ZOffsetFromHero = HorizontalDistance * cosf(-Camera->Head / 180.0f * M_PI);
+	real32 CamPitchRadians = Radians(-Camera->Pitch);
+	real32 CamHeadRadians = Radians(-Camera->Head);
+	real32 VerticalDistance = Camera->DistanceFromHero * sinf(CamPitchRadians);
+	real32 HorizontalDistance = Camera->DistanceFromHero * cosf(CamPitchRadians);
+	real32 XOffsetFromHero = HorizontalDistance * sinf(CamHeadRadians);
+	real32 ZOffsetFromHero = HorizontalDistance * cosf(CamHeadRadians);
 	Camera->OffsetFromHero = V3(XOffsetFromHero, VerticalDistance, ZOffsetFromHero);
 }
 

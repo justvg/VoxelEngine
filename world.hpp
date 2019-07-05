@@ -723,7 +723,7 @@ MergeSort(world_chunk **Node)
 }
 
 internal void
-RenderChunks(world *World, GLuint Shader, mat4 *ViewRotation, mat4 *Projection, v3 CameraOffsetFromHero)
+RenderChunks(world *World, shader &Shader, mat4 *ViewRotation, mat4 *Projection, v3 CameraOffsetFromHero)
 {
 	MergeSort(&World->ChunksRenderList);
 	for(world_chunk *Chunk = World->ChunksRenderList; Chunk; Chunk = Chunk->NextChunk)
@@ -737,8 +737,8 @@ RenderChunks(world *World, GLuint Shader, mat4 *ViewRotation, mat4 *Projection, 
 		mat4 MVP = *Projection * Matrix * ModelMatrix;
 		if(FrustumCulling(MVP, 0.0f, World->ChunkDimInMeters))
 		{
-			glUniformMatrix4fv(glGetUniformLocation(Shader, "Model"), 1, GL_FALSE, ModelMatrix.Elements);
-			glUniformMatrix4fv(glGetUniformLocation(Shader, "View"), 1, GL_FALSE, Matrix.Elements);
+			Shader.SetMat4("Model", ModelMatrix);
+			Shader.SetMat4("View", Matrix);
 			glBindVertexArray(Chunk->VAO);
 			glDrawArrays(GL_TRIANGLES, 0, (GLsizei)Chunk->VertexBuffer->size());
 		}

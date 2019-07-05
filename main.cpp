@@ -249,19 +249,19 @@ int main(void)
 
 	TestShader2D.Enable();
 	mat4 Orthographic = Ortho(0.0f, (real32)Height, 0.0f, (real32)Width, -1.0f, 1.0f);
-	glUniformMatrix4fv(glGetUniformLocation(TestShader2D.ID, "Projection"), 1, GL_FALSE, Orthographic.Elements);
-	glUniform1i(glGetUniformLocation(TestShader2D.ID, "Texture"), 0);
+	TestShader2D.SetMat4("Projection", Orthographic);
+	TestShader2D.SetInt("Texture", 0);
 
 	TextShader.Enable();
-	glUniformMatrix4fv(glGetUniformLocation(TextShader.ID, "Projection"), 1, GL_FALSE, Orthographic.Elements);
-	glUniform1i(glGetUniformLocation(TextShader.ID, "Texture"), 0);
+	TextShader.SetMat4("Projection", Orthographic);
+	TextShader.SetInt("Texture", 0);
 
 	TestShader.Enable();
 	mat4 Projection = Perspective(45.0f, (real32)Width / (real32)Height, 0.1f, 100.0f);
-	glUniformMatrix4fv(glGetUniformLocation(TestShader.ID, "Projection"), 1, GL_FALSE, Projection.Elements);
+	TestShader.SetMat4("Projection", Projection);
 
 	BlockParticleShader.Enable();
-	glUniformMatrix4fv(glGetUniformLocation(BlockParticleShader.ID, "Projection"), 1, GL_FALSE, Projection.Elements);
+	BlockParticleShader.SetMat4("Projection", Projection);
 
 	// NOTE(georgy): Reserve entity slot 0
 	AddLowEntity(&Game, EntityType_Null, InvalidPosition());
@@ -295,9 +295,9 @@ int main(void)
 
 		TestShader.Enable();
 		mat4 ViewRotation = RotationMatrixFromDirectionVector(Normalize(-Camera->OffsetFromHero));
-		RenderChunks(World, TestShader.ID, &ViewRotation, &Projection, -Camera->OffsetFromHero);
+		RenderChunks(World, TestShader, &ViewRotation, &Projection, -Camera->OffsetFromHero);
 
-		UpdateAndRenderEntities(SimRegion, &Game, DeltaTime, TestShader.ID, &ViewRotation, -Camera->OffsetFromHero);
+		UpdateAndRenderEntities(SimRegion, &Game, DeltaTime, TestShader, &ViewRotation, -Camera->OffsetFromHero);
 
 		EndSimulation(SimRegion, World, &Game.WorldAllocator);
 		EndTemporaryMemory(TempSimMemory);

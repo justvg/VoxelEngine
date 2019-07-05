@@ -94,13 +94,13 @@ Scale(v3 Scale)
 }
 
 internal mat4
-Rotate(float Angle, v3 Axis)
+Rotate(real32 Angle, v3 Axis)
 {
 	mat4 Result;
 
-	float Radians = Angle * M_PI / 180.0f;
-	float Cos = cosf(Radians);
-	float Sin = sinf(Radians);
+	real32 Rad = Radians(Angle);
+	real32 Cos = cosf(Rad);
+	real32 Sin = sinf(Rad);
 	Axis.Normalize();
 
 	Result.a11 = Axis.x*Axis.x*(1.0f - Cos) + Cos;
@@ -212,7 +212,7 @@ Ortho(real32 Bottom, real32 Top, real32 Left, real32 Right, real32 Near, real32 
 internal mat4
 Perspective(real32 FoV, real32 AspectRatio, real32 Near, real32 Far)
 {
-	real32 Scale = tanf(FoV * M_PI / 180.0f * 0.5f) * Near;
+	real32 Scale = tanf(Radians(FoV) * 0.5f) * Near;
 	real32 Right = AspectRatio * Scale;
 	real32 Left = -Right;
 	real32 Top = Scale;

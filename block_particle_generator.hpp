@@ -168,9 +168,9 @@ DrawParticles(block_particle_generator *Generator, mat4 *ViewRotation, v3 Camera
 			v3 Translate = Particle->P + CameraOffsetFromHero;
 			mat4 TranslationMatrix = Translation(Translate);
 			mat4 Matrix = *ViewRotation * TranslationMatrix;
-			glUniformMatrix4fv(glGetUniformLocation(Generator->Shader.ID, "Model"), 1, GL_FALSE, ModelMatrix.Elements);
-			glUniformMatrix4fv(glGetUniformLocation(Generator->Shader.ID, "View"), 1, GL_FALSE, Matrix.Elements);
-			glUniform3fv(glGetUniformLocation(Generator->Shader.ID, "inColor"), 1, &Particle->Color.x);
+			Generator->Shader.SetMat4("Model", ModelMatrix);
+			Generator->Shader.SetMat4("View", Matrix);
+			Generator->Shader.SetVec3("inColor", Particle->Color);
 			glDrawArrays(GL_TRIANGLES, 0, 36);
 		}
 	}

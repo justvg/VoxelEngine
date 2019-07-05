@@ -7,6 +7,14 @@ Lerp(real32 A, real32 B, real32 t)
 	return(Result);
 }
 
+inline real32 
+Radians(real32 Angle)
+{
+	real32 Result = Angle / 180.0f * M_PI;
+
+	return(Result);
+}
+
 //
 // rect3
 //

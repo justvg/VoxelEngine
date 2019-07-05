@@ -1,5 +1,9 @@
 #pragma once
 
+#include <fstream>
+#include <string>
+#include <sstream>
+
 enum asset_type
 {
 	Asset_None,
@@ -30,7 +34,7 @@ struct mesh
 
 struct mesh_load_info
 {
-	char *Filename;
+	char Filename[64];
 	real32 Scale;
 	v3 Offset;
 };
@@ -43,55 +47,47 @@ struct graphics_assets
 	mesh_load_info Infos[Asset_Count];
 };
 
+internal void
+LoadInfoFromFile(graphics_assets *Assets, const char *Path, asset_type FirstType)
+{
+	std::ifstream File(Path);
+	if (!File)
+	{
+		std::cout << "Unable to open file " << Path << std::endl;
+		return;
+	}
+
+	std::stringstream StrStream;
+	StrStream << File.rdbuf();
+	while(!StrStream.eof())
+	{
+		std::string TypeOfInfo;
+		StrStream >> TypeOfInfo;
+		Assert(TypeOfInfo == "Path:");
+		StrStream >> Assets->Infos[FirstType].Filename;
+
+		StrStream >> TypeOfInfo;
+		Assert(TypeOfInfo == "Scale:");
+		StrStream >> Assets->Infos[FirstType].Scale;
+
+		StrStream >> TypeOfInfo;
+		Assert(TypeOfInfo == "Offset:");
+		StrStream >> Assets->Infos[FirstType].Offset.x >> Assets->Infos[FirstType].Offset.y >> Assets->Infos[FirstType].Offset.z;
+
+		FirstType = (asset_type)(FirstType + 1);
+	}
+}
+
+
 internal graphics_assets *
 InitializeGameAssets(stack_allocator *Allocator, memory_size Size)
 {
 	graphics_assets *Assets = PushStruct(Allocator, graphics_assets);
 	SubMemory(&Assets->AssetsAllocator, Allocator, Size);
 
-	Assets->Infos[Asset_HeroHead].Filename = "data/models/MaleHead01.qb";
-	Assets->Infos[Asset_HeroHead].Scale = 0.04f;
-	Assets->Infos[Asset_HeroHead].Offset = V3(0.0f, 0.27f, 0.0f);
-
-	Assets->Infos[Asset_HeroBody].Filename = "data/models/Body01.qb";
-	Assets->Infos[Asset_HeroBody].Scale = 0.09f;
-	Assets->Infos[Asset_HeroBody].Offset = V3(0.0f, 0.02f, 0.0f);
-
-	Assets->Infos[Asset_HeroLegs].Filename = "data/models/Legs01.qb";
-	Assets->Infos[Asset_HeroLegs].Scale = 0.09f;
-	Assets->Infos[Asset_HeroLegs].Offset = V3(0.0f, -0.29f, 0.0f);
-
-	Assets->Infos[Asset_HeroLeftFoot].Filename = "data/models/LeftFoot01.qb";
-	Assets->Infos[Asset_HeroLeftFoot].Scale = 0.09f;
-	Assets->Infos[Asset_HeroLeftFoot].Offset = V3(-0.13f, -0.44f, 0.0f);
-
-	Assets->Infos[Asset_HeroRightFoot].Filename = "data/models/RightFoot01.qb";
-	Assets->Infos[Asset_HeroRightFoot].Scale = 0.09f;
-	Assets->Infos[Asset_HeroRightFoot].Offset = V3(0.13f, -0.44f, 0.0f);
-
-	Assets->Infos[Asset_HeroLeftHand].Filename = "data/models/LeftHand01.qb";
-	Assets->Infos[Asset_HeroLeftHand].Scale = 0.09f;
-	Assets->Infos[Asset_HeroLeftHand].Offset = V3(-0.265f, -0.175f, 0.0f);
-
-	Assets->Infos[Asset_HeroRightHand].Filename = "data/models/RightHand01.qb";
-	Assets->Infos[Asset_HeroRightHand].Scale = 0.09f;
-	Assets->Infos[Asset_HeroRightHand].Offset = V3(0.265f, -0.175f, 0.0f);
-
-	Assets->Infos[Asset_HeroLeftShoulder].Filename = "data/models/LeftShoulders01.qb";
-	Assets->Infos[Asset_HeroLeftShoulder].Scale = 0.09f;
-	Assets->Infos[Asset_HeroLeftShoulder].Offset = V3(-0.25f, 0.02f, 0.0f);
-
-	Assets->Infos[Asset_HeroRightShoulder].Filename = "data/models/RightShoulders01.qb";
-	Assets->Infos[Asset_HeroRightShoulder].Scale = 0.09f;
-	Assets->Infos[Asset_HeroRightShoulder].Offset = V3(0.25f, 0.02f, 0.0f);
-
-	Assets->Infos[Asset_Tree].Filename = "data/models/tree1.qb";
-	Assets->Infos[Asset_Tree].Scale = 0.35f;
-	Assets->Infos[Asset_Tree].Offset = V3(0.0f, 0.0f, 0.0f);
-
-	Assets->Infos[Asset_Fireball].Filename = "data/models/Knight.qb";
-	Assets->Infos[Asset_Fireball].Scale = 0.05f;
-	Assets->Infos[Asset_Fireball].Offset = V3(0.0f, 0.0f, 0.0f);
+	LoadInfoFromFile(Assets, "data/models/HeroInfo.txt", Asset_HeroHead);
+	LoadInfoFromFile(Assets, "data/models/TreeInfo.txt", Asset_Tree);
+	LoadInfoFromFile(Assets, "data/models/FireballInfo.txt", Asset_Fireball);
 
 	return(Assets);
 }

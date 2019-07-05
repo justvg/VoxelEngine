@@ -698,7 +698,7 @@ MoveEntity(sim_region *SimRegion, sound_system *SoundSystem, block_particle_gene
 }
 
 internal void
-DrawModel(graphics_assets *Assets, GLuint Shader, asset_type AssetType,
+DrawModel(graphics_assets *Assets, shader &Shader, asset_type AssetType,
 		  real32 ScaleValue, real32 Rotation, v3 Translate)
 {
 	if(Assets->EntityModels[AssetType])
@@ -706,7 +706,7 @@ DrawModel(graphics_assets *Assets, GLuint Shader, asset_type AssetType,
 		mat4 ModelMatrix = Scale(ScaleValue);
 		ModelMatrix = Rotate(Rotation, V3(0.0f, 1.0f, 0.0f)) * ModelMatrix;
 		ModelMatrix = Translation(Translate) * ModelMatrix;
-		glUniformMatrix4fv(glGetUniformLocation(Shader, "Model"), 1, GL_FALSE, ModelMatrix.Elements);
+		Shader.SetMat4("Model", ModelMatrix);
 		glBindVertexArray(Assets->EntityModels[AssetType]->VAO);
 		glDrawArrays(GL_TRIANGLES, 0, Assets->EntityModels[AssetType]->VerticesCount);
 	}
@@ -718,7 +718,7 @@ DrawModel(graphics_assets *Assets, GLuint Shader, asset_type AssetType,
 
 internal void
 UpdateAndRenderEntities(sim_region *SimRegion, game *Game,
-						real32 DeltaTime, GLuint Shader, mat4 *ViewRotation, v3 CameraOffsetFromHero)
+						real32 DeltaTime, shader &Shader, mat4 *ViewRotation, v3 CameraOffsetFromHero)
 {
 	graphics_assets *Assets = Game->Assets;
 	hero_control *Hero = &Game->HeroControl;
@@ -786,13 +786,14 @@ UpdateAndRenderEntities(sim_region *SimRegion, game *Game,
 			v3 Translate = Entity->P + CameraOffsetFromHero;
 			mat4 TranslationMatrix = Translation(Translate);
 			mat4 ViewMatrix = *ViewRotation * TranslationMatrix;
-			glUniformMatrix4fv(glGetUniformLocation(Shader, "View"), 1, GL_FALSE, ViewMatrix.Elements);
+			
+			Shader.SetMat4("View", ViewMatrix);
 
 			switch (Entity->Type)
 			{
 				case EntityType_Hero:
 				{
-					real32 HeroRotRadians = Hero->Rot / 180.0f * M_PI;
+					real32 HeroRotRadians = Radians(Hero->Rot);
 					Entity->FacingDir.x = sinf(HeroRotRadians + M_PI);
 					Entity->FacingDir.z = cosf(HeroRotRadians + M_PI);
 					v3 Right = Normalize(Cross(Entity->FacingDir, V3(0.0f, 1.0f, 0.0f)));

@@ -9,6 +9,12 @@ struct shader
 
 	void Enable();
 	void Disable();
+	void SetReal(char *Name, real32 Value);
+	void SetInt(char *Name, int32 Value);
+	void SetVec2(char *Name, v2 &Vector);
+	void SetVec3(char *Name, v3 &Vector);
+	void SetVec4(char *Name, v4 &Vector);
+	void SetMat4(char *Name, mat4 &Mat);
 };
 
 shader::shader(const char *VertexPath, const char *FragmentPath, const char *GeometryPath)
@@ -81,4 +87,34 @@ void shader::Enable()
 void shader::Disable()
 {
 	glUseProgram(0);
+}
+
+void shader::SetReal(char *Name, real32 Value)
+{
+	glUniform1f(glGetUniformLocation(ID, Name), Value);
+}
+
+void shader::SetInt(char *Name, int32 Value)
+{
+	glUniform1i(glGetUniformLocation(ID, Name), Value);
+}
+
+void shader::SetVec2(char *Name, v2 &Vector)
+{
+	glUniform2f(glGetUniformLocation(ID, Name), Vector.x, Vector.y);
+}
+
+void shader::SetVec3(char *Name, v3 &Vector)
+{
+	glUniform3f(glGetUniformLocation(ID, Name), Vector.x, Vector.y, Vector.z);
+}
+
+void shader::SetVec4(char *Name, v4 &Vector)
+{
+	glUniform4f(glGetUniformLocation(ID, Name), Vector.x, Vector.y, Vector.z, Vector.w);
+}
+
+void shader::SetMat4(char *Name, mat4 &Mat)
+{
+	glUniformMatrix4fv(glGetUniformLocation(ID, Name), 1, GL_FALSE, Mat.Elements);
 }
