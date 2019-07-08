@@ -223,15 +223,17 @@ int main(void)
 	shader TestShader2D("shaders/2d.vert", "shaders/2d.frag");
 	shader BlockParticleShader("shaders/block_particle.vert", "shaders/block_particle.frag");
 	shader TextShader("shaders/text.vert", "shaders/text.frag");
+	shader HUDShader("shaders/quad.vert", "shaders/quad.frag");
+	shader BillboardShader("shaders/billboard.vert", "shaders/billboard.frag");
 
 	InitializeBlockParticleGenerator(&Game.BlockParticleGenerator, BlockParticleShader);
 
 	real32 TestCrosshairVertices[] =
 	{
-		Width / 2.0f - 7.5f, Height / 2.0f + 7.5f + 55.0f, 0.0f, 1.0f,
-		Width / 2.0f - 7.5f, Height / 2.0f - 7.5f + 55.0f, 0.0f, 0.0f,
-		Width / 2.0f + 7.5f, Height / 2.0f + 7.5f + 55.0f, 1.0f, 1.0f,
-		Width / 2.0f + 7.5f, Height / 2.0f - 7.5f + 55.0f, 1.0f, 0.0f,
+		Width / 2.0f - 7.5f, Height / 2.0f + 7.5f + 70.0f, 0.0f, 1.0f,
+		Width / 2.0f - 7.5f, Height / 2.0f - 7.5f + 70.0f, 0.0f, 0.0f,
+		Width / 2.0f + 7.5f, Height / 2.0f + 7.5f + 70.0f, 1.0f, 1.0f,
+		Width / 2.0f + 7.5f, Height / 2.0f - 7.5f + 70.0f, 1.0f, 0.0f,
 	};
 	GLuint VAOCrosshair, VBOCrosshair;
 	glGenVertexArrays(1, &VAOCrosshair);
@@ -245,6 +247,23 @@ int main(void)
 	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4*sizeof(real32), (void *)(2*sizeof(real32)));
 	glBindVertexArray(0);
 
+	real32 QuadVertices[] = 
+	{
+		0.0f, 1.0f,
+		0.0f, 0.0f,
+		1.0f, 1.0f,
+		1.0f, 0.0f,
+	};
+	GLuint QuadVAO, QuadVBO;
+	glGenVertexArrays(1, &QuadVAO);
+	glGenBuffers(1, &QuadVBO);
+	glBindVertexArray(QuadVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, QuadVBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(QuadVertices), QuadVertices, GL_STATIC_DRAW);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2*sizeof(real32), (void *)0);
+	glBindVertexArray(0);
+
 	GLuint CrosshairTexture = LoadTexture("data/textures/crosshair.tga");
 
 	TestShader2D.Enable();
@@ -252,16 +271,22 @@ int main(void)
 	TestShader2D.SetMat4("Projection", Orthographic);
 	TestShader2D.SetInt("Texture", 0);
 
+	HUDShader.Enable();
+	HUDShader.SetMat4("Projection", Orthographic);
+
 	TextShader.Enable();
 	TextShader.SetMat4("Projection", Orthographic);
 	TextShader.SetInt("Texture", 0);
 
 	TestShader.Enable();
-	mat4 Projection = Perspective(45.0f, (real32)Width / (real32)Height, 0.1f, 100.0f);
-	TestShader.SetMat4("Projection", Projection);
+	mat4 PerspectiveMatrix = Perspective(45.0f, (real32)Width / (real32)Height, 0.1f, 100.0f);
+	TestShader.SetMat4("Projection", PerspectiveMatrix);
+
+	BillboardShader.Enable();
+	BillboardShader.SetMat4("Projection", PerspectiveMatrix);
 
 	BlockParticleShader.Enable();
-	BlockParticleShader.SetMat4("Projection", Projection);
+	BlockParticleShader.SetMat4("Projection", PerspectiveMatrix);
 
 	// NOTE(georgy): Reserve entity slot 0
 	AddLowEntity(&Game, EntityType_Null, InvalidPosition());
@@ -270,6 +295,8 @@ int main(void)
 	Game.Hero = AddHero(&Game, TestHeroPosition);
 	world_position TestTreePos = { 10004, 0, 10002, V3(4.0f, 3.3f, 0.0f) };
 	AddTree(&Game, TestTreePos);
+	world_position TestMonsterPos = { 10004, 0, 10002, V3(8.0f, 6.3f, 0.0f) };
+	AddMonster(&Game, TestMonsterPos);
 
 	real32 DeltaTime = TargetSecondsForFrame;
 	real32 LastFrame = (real32)glfwGetTime();
@@ -295,15 +322,17 @@ int main(void)
 
 		TestShader.Enable();
 		mat4 ViewRotation = RotationMatrixFromDirectionVector(Normalize(-Camera->OffsetFromHero));
-		RenderChunks(World, TestShader, &ViewRotation, &Projection, -Camera->OffsetFromHero);
-
-		UpdateAndRenderEntities(SimRegion, &Game, DeltaTime, TestShader, &ViewRotation, -Camera->OffsetFromHero);
+		mat4 TranslationMatrix = Translation(-Camera->OffsetFromHero);
+		mat4 ViewMatrix = ViewRotation * TranslationMatrix;
+		RenderChunks(World, TestShader, &ViewMatrix, &PerspectiveMatrix);
+		
+		UpdateAndRenderEntities(SimRegion, &Game, BillboardShader, QuadVAO, DeltaTime, TestShader, &ViewMatrix, -Camera->OffsetFromHero);
 
 		EndSimulation(SimRegion, World, &Game.WorldAllocator);
 		EndTemporaryMemory(TempSimMemory);
 
 		UpdateParticleGenerator(&Game.BlockParticleGenerator, DeltaTime);
-		DrawParticles(&Game.BlockParticleGenerator, &ViewRotation, -Camera->OffsetFromHero);
+		DrawParticles(&Game.BlockParticleGenerator, &ViewMatrix);
 
 		TestShader2D.Enable();
 		glDisable(GL_DEPTH_TEST);
@@ -314,8 +343,19 @@ int main(void)
 		glBindTexture(GL_TEXTURE_2D, CrosshairTexture);
 		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 		glBindVertexArray(0);
-		glEnable(GL_DEPTH_TEST);
 		glDisable(GL_BLEND);
+		TestShader2D.Disable();
+
+		HUDShader.Enable();
+		glBindVertexArray(QuadVAO);
+		mat4 HUDModel = Scale(V3(100.0f * ((real32)Game.Hero->Sim.HitPoints / Game.Hero->Sim.MaxHitPoints), 20.0f, 1.0f));
+		HUDModel = Translation(V3(50.0f, Height - 40.0f, 0.0f)) * HUDModel;
+		HUDShader.SetMat4("Model", HUDModel);
+		HUDShader.SetVec4("Color", V4(1.0f, 0.0f, 0.0f, 1.0f));
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+		glBindVertexArray(0);
+		glEnable(GL_DEPTH_TEST);
+		RenderTextNumber(&Game.TextRenderer, TextShader, Game.Hero->Sim.HitPoints, 90.0f, Height - 37.0f, 0.35f, V3(1.0f, 1.0f, 1.0f));
 
 		DeltaTime = (real32)glfwGetTime() - LastFrame;
 		// TODO(george): Implement sleeping instead of busy waiting

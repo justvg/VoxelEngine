@@ -334,7 +334,7 @@ LoadQubicleBinary(mesh *Mesh, char *Filename)
 	}
 
 	Mesh->AABB.Min = V3(FLT_MAX, FLT_MAX, FLT_MAX);
-	Mesh->AABB.Max = V3(FLT_MIN, FLT_MIN, FLT_MIN);
+	Mesh->AABB.Max = V3(-FLT_MAX, -FLT_MAX, -FLT_MAX);
 	for (uint32 I = 0; I < VertexBuffer.size(); I++)
 	{
 		if (VertexBuffer[I].Pos.x > Mesh->AABB.Max.x) Mesh->AABB.Max.x = VertexBuffer[I].Pos.x;

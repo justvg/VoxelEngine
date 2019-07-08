@@ -154,22 +154,19 @@ UpdateParticleGenerator(block_particle_generator *Generator, real32 DeltaTime)
 }
 
 internal void
-DrawParticles(block_particle_generator *Generator, mat4 *ViewRotation, v3 CameraOffsetFromHero)
+DrawParticles(block_particle_generator *Generator, mat4 *ViewMatrix)
 {
 	Generator->Shader.Enable();
+	Generator->Shader.SetMat4("View", *ViewMatrix);
+
 	glBindVertexArray(Generator->VAO);
 	for (uint32 I = 0; I < ArrayCount(Generator->Particles); I++)
 	{
 		block_particle *Particle = Generator->Particles + I;
 		if (Particle->LifeTime > 0.0f)
 		{
-			mat4 ModelMatrix = Identity(1.0f);
-
-			v3 Translate = Particle->P + CameraOffsetFromHero;
-			mat4 TranslationMatrix = Translation(Translate);
-			mat4 Matrix = *ViewRotation * TranslationMatrix;
+			mat4 ModelMatrix = Translation(Particle->P);
 			Generator->Shader.SetMat4("Model", ModelMatrix);
-			Generator->Shader.SetMat4("View", Matrix);
 			Generator->Shader.SetVec3("inColor", Particle->Color);
 			glDrawArrays(GL_TRIANGLES, 0, 36);
 		}

@@ -352,7 +352,7 @@ TestWall(real32 WallX, real32 RelX, real32 RelZ, real32 RelY, real32 PlayerDelta
          real32 *tMin, real32 MinZ, real32 MaxZ, real32 MinY, real32 MaxY)
 {
     bool32 Result = false;
-    real32 tEpsilon = 0.05f;
+    real32 tEpsilon = 0.1f;
     if(PlayerDeltaX != 0.0f)
     {
         real32 tResult = (WallX - RelX) / PlayerDeltaX;
@@ -449,6 +449,11 @@ HandleCollision(sound_system *SoundSystem, sim_region *SimRegion, v3 DistancePas
 	{
 		Result = true;
 	}
+	else if (A == EntityType_Hero && B == EntityType_Monster)
+	{
+		Result = true;
+	}
+
 
 	return(Result);
 }
@@ -608,65 +613,56 @@ MoveEntity(sim_region *SimRegion, sound_system *SoundSystem, block_particle_gene
 
 					if (CanCollide(Entity, TestEntity))
 					{
-						for (uint32 VolumeIndex = 0; VolumeIndex < Entity->Collision->VolumeCount; VolumeIndex++)
+						v3 MinkowskiDiameter = { TestEntity->Collision->TotalVolume.Dim.x + Entity->Collision->TotalVolume.Dim.x,
+												 TestEntity->Collision->TotalVolume.Dim.y + Entity->Collision->TotalVolume.Dim.y,
+												 TestEntity->Collision->TotalVolume.Dim.z + Entity->Collision->TotalVolume.Dim.z };
+
+						v3 MinCorner = -0.5f*MinkowskiDiameter;
+						v3 MaxCorner = 0.5f*MinkowskiDiameter;
+
+						v3 RelPlayerP = (Entity->P + Entity->Collision->TotalVolume.OffsetP) - (TestEntity->P + TestEntity->Collision->TotalVolume.OffsetP);
+
+						if (TestWall(MinCorner.x, RelPlayerP.x, RelPlayerP.z, RelPlayerP.y, EntityDelta.x, EntityDelta.z, EntityDelta.y,
+							&tMin, MinCorner.x, MaxCorner.x, MinCorner.y, MaxCorner.y))
 						{
-							sim_entity_collision_volume *Volume = Entity->Collision->Volumes + VolumeIndex;
-							for (uint32 TestVolumeIndex = 0; TestVolumeIndex < TestEntity->Collision->VolumeCount; TestVolumeIndex++)
-							{
-								sim_entity_collision_volume *TestVolume = TestEntity->Collision->Volumes + TestVolumeIndex;
-						
-								v3 MinkowskiDiameter = { TestVolume->Dim.x + Volume->Dim.x,
-														 TestVolume->Dim.y + Volume->Dim.y,
-														 TestVolume->Dim.z + Volume->Dim.z };
-
-								v3 MinCorner = -0.5f*MinkowskiDiameter;
-								v3 MaxCorner = 0.5f*MinkowskiDiameter;
-
-								v3 RelPlayerP = (Entity->P + Volume->OffsetP) - (TestEntity->P + TestVolume->OffsetP);
-
-								if (TestWall(MinCorner.x, RelPlayerP.x, RelPlayerP.z, RelPlayerP.y, EntityDelta.x, EntityDelta.z, EntityDelta.y,
-									&tMin, MinCorner.x, MaxCorner.x, MinCorner.y, MaxCorner.y))
-								{
-									Normal = V3(-1.0f, 0.0f, 0.0f);
-									HitEntity = TestEntity;
-									HitEntityType = TestEntity->Type;
-								}
-								if (TestWall(MaxCorner.x, RelPlayerP.x, RelPlayerP.z, RelPlayerP.y, EntityDelta.x, EntityDelta.z, EntityDelta.y,
-									&tMin, MinCorner.x, MaxCorner.x, MinCorner.y, MaxCorner.y))
-								{
-									Normal = V3(1.0f, 0.0f, 0.0f);
-									HitEntity = TestEntity;
-									HitEntityType = TestEntity->Type;
-								}
-								if (TestWall(MinCorner.z, RelPlayerP.z, RelPlayerP.x, RelPlayerP.y, EntityDelta.z, EntityDelta.x, EntityDelta.y,
-									&tMin, MinCorner.x, MaxCorner.x, MinCorner.y, MaxCorner.y))
-								{
-									Normal = V3(0.0f, 0.0f, -1.0f);
-									HitEntity = TestEntity;
-									HitEntityType = TestEntity->Type;
-								}
-								if (TestWall(MaxCorner.z, RelPlayerP.z, RelPlayerP.x, RelPlayerP.y, EntityDelta.z, EntityDelta.x, EntityDelta.y,
-									&tMin, MinCorner.x, MaxCorner.x, MinCorner.y, MaxCorner.y))
-								{
-									Normal = V3(0.0f, 0.0f, 1.0f);
-									HitEntity = TestEntity;
-									HitEntityType = TestEntity->Type;
-								}
-								if (TestWall(MinCorner.y, RelPlayerP.y, RelPlayerP.x, RelPlayerP.z, EntityDelta.y, EntityDelta.x, EntityDelta.z,
-									&tMin, MinCorner.x, MaxCorner.x, MinCorner.z, MaxCorner.z))
-								{
-									Normal = V3(0.0f, -1.0f, 0.0f);
-									HitEntity = TestEntity;
-									HitEntityType = TestEntity->Type;
-								}
-								if (TestWall(MaxCorner.y, RelPlayerP.y, RelPlayerP.x, RelPlayerP.z, EntityDelta.y, EntityDelta.x, EntityDelta.z,
-									&tMin, MinCorner.x, MaxCorner.x, MinCorner.z, MaxCorner.z))
-								{
-									Normal = V3(0.0f, 1.0f, 0.0f);
-									HitEntity = TestEntity;
-									HitEntityType = TestEntity->Type;
-								}
-							}
+							Normal = V3(-1.0f, 0.0f, 0.0f);
+							HitEntity = TestEntity;
+							HitEntityType = TestEntity->Type;
+						}
+						if (TestWall(MaxCorner.x, RelPlayerP.x, RelPlayerP.z, RelPlayerP.y, EntityDelta.x, EntityDelta.z, EntityDelta.y,
+							&tMin, MinCorner.x, MaxCorner.x, MinCorner.y, MaxCorner.y))
+						{
+							Normal = V3(1.0f, 0.0f, 0.0f);
+							HitEntity = TestEntity;
+							HitEntityType = TestEntity->Type;
+						}
+						if (TestWall(MinCorner.z, RelPlayerP.z, RelPlayerP.x, RelPlayerP.y, EntityDelta.z, EntityDelta.x, EntityDelta.y,
+							&tMin, MinCorner.x, MaxCorner.x, MinCorner.y, MaxCorner.y))
+						{
+							Normal = V3(0.0f, 0.0f, -1.0f);
+							HitEntity = TestEntity;
+							HitEntityType = TestEntity->Type;
+						}
+						if (TestWall(MaxCorner.z, RelPlayerP.z, RelPlayerP.x, RelPlayerP.y, EntityDelta.z, EntityDelta.x, EntityDelta.y,
+							&tMin, MinCorner.x, MaxCorner.x, MinCorner.y, MaxCorner.y))
+						{
+							Normal = V3(0.0f, 0.0f, 1.0f);
+							HitEntity = TestEntity;
+							HitEntityType = TestEntity->Type;
+						}
+						if (TestWall(MinCorner.y, RelPlayerP.y, RelPlayerP.x, RelPlayerP.z, EntityDelta.y, EntityDelta.x, EntityDelta.z,
+							&tMin, MinCorner.x, MaxCorner.x, MinCorner.z, MaxCorner.z))
+						{
+							Normal = V3(0.0f, -1.0f, 0.0f);
+							HitEntity = TestEntity;
+							HitEntityType = TestEntity->Type;
+						}
+						if (TestWall(MaxCorner.y, RelPlayerP.y, RelPlayerP.x, RelPlayerP.z, EntityDelta.y, EntityDelta.x, EntityDelta.z,
+							&tMin, MinCorner.x, MaxCorner.x, MinCorner.z, MaxCorner.z))
+						{
+							Normal = V3(0.0f, 1.0f, 0.0f);
+							HitEntity = TestEntity;
+							HitEntityType = TestEntity->Type;
 						}
 					}
 				}
@@ -699,13 +695,13 @@ MoveEntity(sim_region *SimRegion, sound_system *SoundSystem, block_particle_gene
 
 internal void
 DrawModel(graphics_assets *Assets, shader &Shader, asset_type AssetType,
-		  real32 ScaleValue, real32 Rotation, v3 Translate)
+		  real32 ScaleValue, real32 Rotation, v3 Translate, v3 EntityP)
 {
 	if(Assets->EntityModels[AssetType])
 	{
 		mat4 ModelMatrix = Scale(ScaleValue);
 		ModelMatrix = Rotate(Rotation, V3(0.0f, 1.0f, 0.0f)) * ModelMatrix;
-		ModelMatrix = Translation(Translate) * ModelMatrix;
+		ModelMatrix = Translation(Translate + EntityP) * ModelMatrix;
 		Shader.SetMat4("Model", ModelMatrix);
 		glBindVertexArray(Assets->EntityModels[AssetType]->VAO);
 		glDrawArrays(GL_TRIANGLES, 0, Assets->EntityModels[AssetType]->VerticesCount);
@@ -717,15 +713,18 @@ DrawModel(graphics_assets *Assets, shader &Shader, asset_type AssetType,
 }
 
 internal void
-UpdateAndRenderEntities(sim_region *SimRegion, game *Game,
-						real32 DeltaTime, shader &Shader, mat4 *ViewRotation, v3 CameraOffsetFromHero)
+UpdateAndRenderEntities(sim_region *SimRegion, game *Game, shader &BillboardShader, GLuint BillboardVAO,
+						real32 DeltaTime, shader &Shader, mat4 *ViewMatrix, v3 CameraOffsetFromHero)
 {
+	Shader.SetMat4("View", *ViewMatrix);
+
 	graphics_assets *Assets = Game->Assets;
 	hero_control *Hero = &Game->HeroControl;
 	block_particle_generator *BlockParticleGenerator = &Game->BlockParticleGenerator;
 	sound_system *SoundSystem = &Game->Sound;
 	for(uint32 EntityIndex = 0; EntityIndex < SimRegion->EntityCount; EntityIndex++)
 	{
+		Shader.Enable();
 		sim_entity *Entity = SimRegion->Entities + EntityIndex;	
 
 		if(Entity->Updatable)
@@ -767,6 +766,10 @@ UpdateAndRenderEntities(sim_region *SimRegion, game *Game,
 						}
 					}
 				} break;
+				case EntityType_Monster:
+				{
+					MoveSpec.GravityAffected = true;
+				} break;
 				case EntityType_Fireball:
 				{
 					if (Entity->DistanceLimit == 0.0f)
@@ -781,13 +784,6 @@ UpdateAndRenderEntities(sim_region *SimRegion, game *Game,
 			{
 				MoveEntity(SimRegion, SoundSystem, BlockParticleGenerator, Entity, DeltaTime, &MoveSpec);
 			}
-
-			mat4 ModelMatrix = Identity(1.0f);
-			v3 Translate = Entity->P + CameraOffsetFromHero;
-			mat4 TranslationMatrix = Translation(Translate);
-			mat4 ViewMatrix = *ViewRotation * TranslationMatrix;
-			
-			Shader.SetMat4("View", ViewMatrix);
 
 			switch (Entity->Type)
 			{
@@ -810,23 +806,23 @@ UpdateAndRenderEntities(sim_region *SimRegion, game *Game,
 					v3 AnimOffsetCos = EntitydPLength / 6 * 0.06f*cosf(10.0f*glfwGetTime()) * Entity->FacingDir;
 
 					DrawModel(Assets, Shader, Asset_HeroHead, Assets->Infos[Asset_HeroHead].Scale,
-							  Hero->Rot + 180.0f, Assets->Infos[Asset_HeroHead].Offset);
+							  Hero->Rot + 180.0f, Assets->Infos[Asset_HeroHead].Offset, Entity->P);
 					DrawModel(Assets, Shader, Asset_HeroBody, Assets->Infos[Asset_HeroBody].Scale,
-							  Hero->Rot + 180.0f, Assets->Infos[Asset_HeroBody].Offset);
+							  Hero->Rot + 180.0f, Assets->Infos[Asset_HeroBody].Offset, Entity->P);
 					DrawModel(Assets, Shader, Asset_HeroLegs, Assets->Infos[Asset_HeroLegs].Scale,
-							  Hero->Rot + 180.0f, Assets->Infos[Asset_HeroLegs].Offset);
+							  Hero->Rot + 180.0f, Assets->Infos[Asset_HeroLegs].Offset, Entity->P);
 					DrawModel(Assets, Shader, Asset_HeroLeftFoot, Assets->Infos[Asset_HeroLeftFoot].Scale,
-							  Hero->Rot + 180.0f, TranslateLeftFoot + AnimOffsetSin);
+							  Hero->Rot + 180.0f, TranslateLeftFoot + AnimOffsetSin, Entity->P);
 					DrawModel(Assets, Shader, Asset_HeroRightFoot, Assets->Infos[Asset_HeroRightFoot].Scale,
-							  Hero->Rot + 180.0f, TranslateRightFoot + AnimOffsetCos);
+							  Hero->Rot + 180.0f, TranslateRightFoot + AnimOffsetCos, Entity->P);
 					DrawModel(Assets, Shader, Asset_HeroLeftHand, Assets->Infos[Asset_HeroLeftHand].Scale,
-							  Hero->Rot + 180.0f, TranslateLeftHand + AnimOffsetCos);
+							  Hero->Rot + 180.0f, TranslateLeftHand + AnimOffsetCos, Entity->P);
 					DrawModel(Assets, Shader, Asset_HeroRightHand, Assets->Infos[Asset_HeroRightHand].Scale,
-							  Hero->Rot + 180.0f, TranslateRightHand + AnimOffsetSin);
+							  Hero->Rot + 180.0f, TranslateRightHand + AnimOffsetSin, Entity->P);
 					DrawModel(Assets, Shader, Asset_HeroLeftShoulder, Assets->Infos[Asset_HeroLeftShoulder].Scale,
-							  Hero->Rot + 180.0f, TranslateLeftShoulder + AnimOffsetCos);
+							  Hero->Rot + 180.0f, TranslateLeftShoulder + AnimOffsetCos, Entity->P);
 					DrawModel(Assets, Shader, Asset_HeroRightShoulder, Assets->Infos[Asset_HeroRightShoulder].Scale,
-							  Hero->Rot + 180.0f, TranslateRightShoulder + AnimOffsetSin);
+							  Hero->Rot + 180.0f, TranslateRightShoulder + AnimOffsetSin, Entity->P);
 
 					if (!Game->HeroCollision)
 					{
@@ -880,10 +876,62 @@ UpdateAndRenderEntities(sim_region *SimRegion, game *Game,
 					}
 					Entity->Collision = Game->HeroCollision;
 				} break;
+				case EntityType_Monster:
+				{
+					DrawModel(Assets, Shader, Asset_HeroHead, Assets->Infos[Asset_HeroHead].Scale,
+							  180.0f, Assets->Infos[Asset_HeroHead].Offset, Entity->P);
+					DrawModel(Assets, Shader, Asset_HeroBody, Assets->Infos[Asset_HeroBody].Scale,
+							  180.0f, Assets->Infos[Asset_HeroBody].Offset, Entity->P);
+					DrawModel(Assets, Shader, Asset_HeroLegs, Assets->Infos[Asset_HeroLegs].Scale,
+							  180.0f, Assets->Infos[Asset_HeroLegs].Offset, Entity->P);
+
+					BillboardShader.Enable();
+					glBindVertexArray(BillboardVAO);
+					BillboardShader.SetMat4("View", *ViewMatrix);
+					v3 UpAxis = V3(0.0f, 1.0f, 0.0f);
+					v3 Forward = Normalize(-CameraOffsetFromHero);
+					v3 Right = Normalize(Cross(UpAxis, Forward));
+					BillboardShader.SetVec3("CameraRight", Right);
+					BillboardShader.SetVec3("CameraUp", V3(0.0f, 1.0f, 0.0f));
+					BillboardShader.SetVec2("Scale", V2(1.0f * ((real32)Entity->HitPoints / Entity->MaxHitPoints), 0.2f));
+					BillboardShader.SetVec4("Color", V4(1.0f, 0.0f, 0.0f, 1.0f));
+					BillboardShader.SetVec3("QuadCenterSimRegion", Entity->P + V3(-0.5f, 0.5f, 0.0f));
+					glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+					glBindVertexArray(0);
+					BillboardShader.Disable();
+
+					if (!Game->MonsterCollision)
+					{
+						Game->MonsterCollision = AllocateCollision(&Game->WorldAllocator, 3);
+
+						Game->MonsterCollision->Volumes[Asset_HeroHead - Asset_HeroHead].Dim =
+							Assets->Infos[Asset_HeroHead].Scale*GetRectDim(Assets->EntityModels[Asset_HeroHead]->AABB);
+						Game->MonsterCollision->Volumes[Asset_HeroHead - Asset_HeroHead].OffsetP = Assets->Infos[Asset_HeroHead].Offset;
+
+						Game->MonsterCollision->Volumes[Asset_HeroBody - Asset_HeroHead].Dim =
+							Assets->Infos[Asset_HeroBody].Scale*GetRectDim(Assets->EntityModels[Asset_HeroBody]->AABB);
+						Game->MonsterCollision->Volumes[Asset_HeroBody - Asset_HeroHead].OffsetP = Assets->Infos[Asset_HeroBody].Offset;
+
+						Game->MonsterCollision->Volumes[Asset_HeroLegs - Asset_HeroHead].Dim =
+							Assets->Infos[Asset_HeroLegs].Scale*GetRectDim(Assets->EntityModels[Asset_HeroLegs]->AABB);
+						Game->MonsterCollision->Volumes[Asset_HeroLegs - Asset_HeroHead].OffsetP = Assets->Infos[Asset_HeroLegs].Offset;
+
+						ComputeTotalVolume(Game->MonsterCollision, Entity->P);
+						if (Game->MonsterCollision->TotalVolume.Dim.z > Game->MonsterCollision->TotalVolume.Dim.x)
+						{
+							Game->MonsterCollision->TotalVolume.Dim.x = Game->MonsterCollision->TotalVolume.Dim.z;
+						}
+						else
+						{
+							Game->MonsterCollision->TotalVolume.Dim.z = Game->MonsterCollision->TotalVolume.Dim.x;
+						}
+					}
+					Entity->Collision = Game->MonsterCollision;
+				} break;
 				case EntityType_Fireball:
 				{
 					DrawModel(Assets, Shader, Asset_Fireball, Assets->Infos[Asset_Fireball].Scale,
-							  0.0f, Assets->Infos[Asset_Fireball].Offset);
+							  0.0f, Assets->Infos[Asset_Fireball].Offset, Entity->P);
 					if (!Game->FireballCollision)
 					{
 						v3 Dim = Assets->Infos[Asset_Fireball].Scale*(Assets->EntityModels[Asset_Fireball]->AABB.Max - Assets->EntityModels[Asset_Fireball]->AABB.Min);
@@ -895,7 +943,7 @@ UpdateAndRenderEntities(sim_region *SimRegion, game *Game,
 				case EntityType_Tree:
 				{
 					DrawModel(Assets, Shader, Asset_Tree, Assets->Infos[Asset_Tree].Scale,
-							  0.0f, Assets->Infos[Asset_Tree].Offset);
+							  0.0f, Assets->Infos[Asset_Tree].Offset, Entity->P);
 					if (!Game->TreeCollision)
 					{
 						v3 Dim = Assets->Infos[Asset_Tree].Scale*(Assets->EntityModels[Asset_Tree]->AABB.Max - Assets->EntityModels[Asset_Tree]->AABB.Min);

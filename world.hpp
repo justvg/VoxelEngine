@@ -158,6 +158,7 @@ enum entity_type
 	EntityType_Hero,
 	EntityType_Tree,
 	EntityType_Fireball,
+	EntityType_Monster,
 
 	EntityType_Count
 };
@@ -192,6 +193,9 @@ struct sim_entity
 	bool32 OnGround;
 
 	real32 DistanceLimit;
+
+	uint32 MaxHitPoints;
+	uint32 HitPoints;
 
 	v3 P;
 	v3 dP;
@@ -723,22 +727,19 @@ MergeSort(world_chunk **Node)
 }
 
 internal void
-RenderChunks(world *World, shader &Shader, mat4 *ViewRotation, mat4 *Projection, v3 CameraOffsetFromHero)
+RenderChunks(world *World, shader &Shader, mat4 *ViewMatrix, mat4 *Projection)
 {
+	Shader.SetMat4("View", *ViewMatrix);
+
 	MergeSort(&World->ChunksRenderList);
 	for(world_chunk *Chunk = World->ChunksRenderList; Chunk; Chunk = Chunk->NextChunk)
 	{
-		mat4 ModelMatrix = Identity(1.0f);
-
-		v3 Translate = Chunk->Translation + CameraOffsetFromHero;
-		mat4 TranslationMatrix = Translation(Translate);
-		mat4 Matrix = *ViewRotation * TranslationMatrix;
+		mat4 ModelMatrix = Translation(Chunk->Translation);
 		
-		mat4 MVP = *Projection * Matrix * ModelMatrix;
+		mat4 MVP = *Projection * *ViewMatrix * ModelMatrix;
 		if(FrustumCulling(MVP, 0.0f, World->ChunkDimInMeters))
 		{
 			Shader.SetMat4("Model", ModelMatrix);
-			Shader.SetMat4("View", Matrix);
 			glBindVertexArray(Chunk->VAO);
 			glDrawArrays(GL_TRIANGLES, 0, (GLsizei)Chunk->VertexBuffer->size());
 		}

@@ -202,8 +202,7 @@ ComputeTotalVolume(sim_entity_collision_volume_group *Group, v3 SimEntityPos)
 {
 	rect3 AABB;
 	AABB.Min = V3(FLT_MAX, FLT_MAX, FLT_MAX);
-	AABB.Max = V3(FLT_MIN, FLT_MIN, FLT_MIN);
-	v3 OffsetSum = V3(0.0f, 0.0f, 0.0f);
+	AABB.Max = V3(-FLT_MAX, -FLT_MAX, -FLT_MAX);
 	for (uint32 VolumeIndex = 0; VolumeIndex < Group->VolumeCount; VolumeIndex++)
 	{
 		sim_entity_collision_volume *Volume = Group->Volumes + VolumeIndex;
@@ -215,7 +214,6 @@ ComputeTotalVolume(sim_entity_collision_volume_group *Group, v3 SimEntityPos)
 		if (A.x < AABB.Min.x) AABB.Min.x = A.x;
 		if (A.y < AABB.Min.y) AABB.Min.y = A.y;
 		if (A.z < AABB.Min.z) AABB.Min.z = A.z;
-		OffsetSum += Volume->OffsetP;
 	}
 
 	Group->TotalVolume.Dim = AABB.Max - AABB.Min;
@@ -349,15 +347,18 @@ RenderTextNumber(text_renderer *TextRenderer, shader &Shader, uint32 Num, real32
 		Temp /= 10;
 	}
 
-	for(uint32 I = 0; I < Length; I++)
+	uint32 Divider = 1;
+	for (uint32 I = 0; I < Length - 1; I++)
 	{
-		uint32 Digit = Num;
-		while (Digit > 10)
-		{
-			Digit /= 10;
-		}
-		Num = Num % (10 * (Length - I));
-	
+		Divider *= 10;
+	}
+
+	while ((Num > 0) || (Divider > 0))
+	{
+		uint32 Digit = Num / Divider;
+		Num %= Divider;
+		Divider /= 10;
+
 		character Ch = TextRenderer->Characters[Digit + 48];
 
 		real32 XPos = X + Ch.Bearing.x * Scale;
@@ -438,6 +439,7 @@ struct game
 	sim_entity_collision_volume_group *NullCollision;
 	sim_entity_collision_volume_group *TreeCollision;
 	sim_entity_collision_volume_group *HeroCollision;
+	sim_entity_collision_volume_group *MonsterCollision;
 	sim_entity_collision_volume_group *FireballCollision;
 };
 
@@ -497,6 +499,19 @@ AddHero(game *Game, world_position P)
 	Entity.LowEntity->Sim.Moveable = true;
 	Entity.LowEntity->Sim.Collides = true;
 	Entity.LowEntity->Sim.Fireball.LowIndex = AddFireball(Game);
+	Entity.LowEntity->Sim.MaxHitPoints = 100;
+	Entity.LowEntity->Sim.HitPoints = 70;
 
 	return(Entity.LowEntity);
+}
+
+internal void
+AddMonster(game *Game, world_position P)
+{
+	add_low_entity_result Entity = AddLowEntity(Game, EntityType_Monster, P);
+
+	Entity.LowEntity->Sim.Moveable = true;
+	Entity.LowEntity->Sim.Collides = true;
+	Entity.LowEntity->Sim.MaxHitPoints = 50;
+	Entity.LowEntity->Sim.HitPoints = 50;
 }
