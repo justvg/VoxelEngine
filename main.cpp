@@ -224,6 +224,7 @@ int main(void)
 	shader BlockParticleShader("shaders/block_particle.vert", "shaders/block_particle.frag");
 	shader TextShader("shaders/text.vert", "shaders/text.frag");
 	shader HUDShader("shaders/quad.vert", "shaders/quad.frag");
+	shader HUD3DShader("shaders/3DHUD.vert", "shaders/3DHUD.frag");
 	shader BillboardShader("shaders/billboard.vert", "shaders/billboard.frag");
 
 	InitializeBlockParticleGenerator(&Game.BlockParticleGenerator, BlockParticleShader);
@@ -281,6 +282,9 @@ int main(void)
 	TestShader.Enable();
 	mat4 PerspectiveMatrix = Perspective(45.0f, (real32)Width / (real32)Height, 0.1f, 100.0f);
 	TestShader.SetMat4("Projection", PerspectiveMatrix);
+
+	HUD3DShader.Enable();
+	HUD3DShader.SetMat4("Projection", PerspectiveMatrix);
 
 	BillboardShader.Enable();
 	BillboardShader.SetMat4("Projection", PerspectiveMatrix);
@@ -349,13 +353,30 @@ int main(void)
 		HUDShader.Enable();
 		glBindVertexArray(QuadVAO);
 		mat4 HUDModel = Scale(V3(100.0f * ((real32)Game.Hero->Sim.HitPoints / Game.Hero->Sim.MaxHitPoints), 20.0f, 1.0f));
-		HUDModel = Translation(V3(50.0f, Height - 40.0f, 0.0f)) * HUDModel;
+		HUDModel = Translation(V3(70.0f, Height - 50.0f, 0.0f)) * HUDModel;
 		HUDShader.SetMat4("Model", HUDModel);
 		HUDShader.SetVec4("Color", V4(1.0f, 0.0f, 0.0f, 1.0f));
 		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 		glBindVertexArray(0);
 		glEnable(GL_DEPTH_TEST);
-		RenderTextNumber(&Game.TextRenderer, TextShader, Game.Hero->Sim.HitPoints, 90.0f, Height - 37.0f, 0.35f, V3(1.0f, 1.0f, 1.0f));
+		RenderTextNumber(&Game.TextRenderer, TextShader, Game.Hero->Sim.HitPoints, 100.0f, Height - 47.0f, 0.35f, V3(1.0f, 1.0f, 1.0f));
+
+		if (Game.Assets->EntityModels[Asset_HeroHead])
+		{
+			HUD3DShader.Enable();
+			glDisable(GL_DEPTH_TEST);
+
+			mat4 Matrix = Scale(0.5f*Game.Assets->Infos[Asset_HeroHead].Scale);
+			Matrix = Rotate(25.0f, V3(0.0f, 1.0f, 0.0f)) * Matrix;
+			Matrix = Rotate(10.0f, V3(1.0f, 0.0f, 0.0f)) * Matrix;
+			Matrix = Translation(V3(-1.9f, 1.05f, -3.0f)) * Matrix;
+			HUD3DShader.SetMat4("View", Matrix);
+			glBindVertexArray(Game.Assets->EntityModels[Asset_HeroHead]->VAO);
+			glDrawArrays(GL_TRIANGLES, 0, Game.Assets->EntityModels[Asset_HeroHead]->VerticesCount);
+
+			glEnable(GL_DEPTH_TEST);
+			HUD3DShader.Disable();
+		}
 
 		DeltaTime = (real32)glfwGetTime() - LastFrame;
 		// TODO(george): Implement sleeping instead of busy waiting

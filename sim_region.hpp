@@ -405,21 +405,25 @@ internal bool32
 HandleCollision(sound_system *SoundSystem, sim_region *SimRegion, v3 DistancePassed, world_position *OldWorldP, block_particle_generator *BlockParticleGenerator,
 				sim_entity *EntityA, sim_entity *EntityB, entity_type A, entity_type B)
 {
-	bool32 Result = false;
+	bool32 Result = true;
 
 	if (A > B)
 	{
 		entity_type Temp = A;
 		A = B;
 		B = Temp;
+
+		sim_entity *TempPtr = EntityA;
+		EntityA = EntityB;
+		EntityB = TempPtr;
 	}
 
 	if (A == EntityType_Chunk && B == EntityType_Fireball)
 	{
-		Assert(EntityA);
-		Assert(EntityA->Type == EntityType_Fireball);
-		MakeEntityNonSpatial(EntityA);
-		SoundSystem->StopSoundAndDeleteFromHashTable(EntityA->StorageIndex);
+		Assert(EntityB);
+		Assert(EntityB->Type == EntityType_Fireball);
+		MakeEntityNonSpatial(EntityB);
+		SoundSystem->StopSoundAndDeleteFromHashTable(EntityB->StorageIndex);
 		for (int32 Z = -2; Z <= 2; Z++)
 		{
 			for (int32 Y = -2; Y <= 2; Y++)
@@ -437,21 +441,21 @@ HandleCollision(sound_system *SoundSystem, sim_region *SimRegion, v3 DistancePas
 	}
 	else if (A == EntityType_Tree && B == EntityType_Fireball)
 	{
-		Assert(EntityA);
-		Assert(EntityA->Type == EntityType_Fireball);
+		Assert(EntityB);
+		Assert(EntityB->Type == EntityType_Fireball);
+		MakeEntityNonSpatial(EntityB);
+	}
+	else if (A == EntityType_Fireball && B == EntityType_Monster)
+	{
 		MakeEntityNonSpatial(EntityA);
-	}
-	else if (A == EntityType_Chunk && B == EntityType_Hero)
-	{
-		Result = true;
-	}
-	else if (A == EntityType_Hero && B == EntityType_Tree)
-	{
-		Result = true;
-	}
-	else if (A == EntityType_Hero && B == EntityType_Monster)
-	{
-		Result = true;
+		SoundSystem->StopSoundAndDeleteFromHashTable(EntityA->StorageIndex);
+
+		EntityB->HitPoints -= 10;
+		if (EntityB->HitPoints == 0)
+		{
+			// TODO(georgy): Delete from entities array
+			MakeEntityNonSpatial(EntityB);
+		}
 	}
 
 

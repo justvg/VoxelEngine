@@ -17,10 +17,10 @@ Features to add necessarily:
 - Entity AI
 - GUI
 
-## Screenshot
+## Screenshot and video
+[![Watch the video](https://i.imgur.com/ZrcATK4.png)](https://youtu.be/LWg2gRK3NLU)
 ![Screenshot](https://i.imgur.com/fLxbDih.png)
-![Screenshot](https://i.imgur.com/5QDUtTT.png)
 
 ## Some references
-https://handmadehero.org/
-https://github.com/AlwaysGeeky/Vox
+https://handmadehero.org/ <br/>
+Models are from https://github.com/AlwaysGeeky/Vox
